@@ -135,8 +135,8 @@ impl<'a> LowerCtx<'a> {
         // Top-level signal resolution is never inside a `fn` body, so there
         // are no call-local bindings in scope here.
         let bits = match declared_width {
-            Some(w) => self.lower_expr_sized(module, expr, None, w),
-            None => self.lower_expr(module, expr, None),
+            Some(w) => self.lower_expr_sized(module, expr, None, None, w),
+            None => self.lower_expr(module, expr, None, None),
         };
         self.resolved.insert(name.to_string(), bits.clone());
         bits
@@ -195,6 +195,7 @@ impl<'a> LowerCtx<'a> {
         module: &mut Module,
         e: &Expr,
         locals: Option<&HashMap<String, Bits>>,
+        arrays: Option<&HashMap<String, u32>>,
         target_width: u32,
     ) -> Bits {
         // `ExprKind::Int` is kept as its own arm rather than folded into the
@@ -238,7 +239,7 @@ impl<'a> LowerCtx<'a> {
         };
         match folded {
             Some(cv) => self.lower_const(module, &cv, e.span),
-            None => self.lower_expr(module, e, locals),
+            None => self.lower_expr(module, e, locals, arrays),
         }
     }
 
@@ -273,7 +274,12 @@ impl<'a> LowerCtx<'a> {
     /// see the `FnCall` arm below) when lowering is happening INSIDE an
     /// inlined function body; `None` everywhere else (module-level
     /// wire/output/register lowering) — a plain `Ident` then always
-    /// resolves as a module signal via `self.resolve`.
+    /// resolves as a module signal via `self.resolve`. `arrays` is `locals`'s
+    /// sibling: `Some` exactly when `locals` is (an array-typed `fn` param
+    /// only ever exists alongside its call's own `locals`), mapping each
+    /// in-scope flattened array's bare name to its element count so
+    /// `ExprKind::Index` can tell "this is `vals[i]` on an array param" from
+    /// "this is a plain-vector bit-select" (GAP-1 residual Task 6).
     ///
     /// At top level (`locals: None`) the whole thing is memoized on the
     /// node's address, so a body walked once per target lowers each of its
@@ -284,6 +290,7 @@ impl<'a> LowerCtx<'a> {
         module: &mut Module,
         e: &Expr,
         locals: Option<&HashMap<String, Bits>>,
+        arrays: Option<&HashMap<String, u32>>,
     ) -> Bits {
         let site = std::ptr::from_ref(e) as usize;
         if locals.is_none()
@@ -329,8 +336,8 @@ impl<'a> LowerCtx<'a> {
                 self.lower_const(module, &const_val, e.span)
             }
             ExprKind::Binary { op, lhs, rhs } => {
-                let mut a = self.lower_expr(module, lhs, locals);
-                let mut b = self.lower_expr(module, rhs, locals);
+                let mut a = self.lower_expr(module, lhs, locals, arrays);
+                let mut b = self.lower_expr(module, rhs, locals, arrays);
                 // A width mismatch here can only be a compile-time-constant
                 // expression (a bare literal, a const/param identifier, or a
                 // larger constant expression built from those — see
@@ -352,9 +359,9 @@ impl<'a> LowerCtx<'a> {
                 // loud validation failure rather than a silent truncation.
                 if requires_matched_ab(*op) && a.width() != b.width() {
                     if self.is_const_foldable(lhs, locals) {
-                        a = self.lower_expr_sized(module, lhs, locals, b.width());
+                        a = self.lower_expr_sized(module, lhs, locals, arrays, b.width());
                     } else if self.is_const_foldable(rhs, locals) {
-                        b = self.lower_expr_sized(module, rhs, locals, a.width());
+                        b = self.lower_expr_sized(module, rhs, locals, arrays, a.width());
                     }
                 }
                 let shl_const_amount = (*op == BinOp::Shl)
@@ -373,7 +380,7 @@ impl<'a> LowerCtx<'a> {
                 self.lower_binop(module, *op, a, b, shl_const_amount, cmp_signed, e.span)
             }
             ExprKind::Unary { op, expr } => {
-                let a = self.lower_expr(module, expr, locals);
+                let a = self.lower_expr(module, expr, locals, arrays);
                 let (kind, out_width) = match op {
                     UnOp::Neg => (CellKind::Neg, a.width()),
                     UnOp::BitNot => (CellKind::Not, a.width()),
@@ -391,7 +398,7 @@ impl<'a> LowerCtx<'a> {
             ExprKind::Concat(parts) => {
                 let mut ids = Vec::new();
                 for part in parts.iter().rev() {
-                    let bits = self.lower_expr(module, part, locals);
+                    let bits = self.lower_expr(module, part, locals, arrays);
                     ids.extend(bits.0);
                 }
                 Bits(ids)
@@ -401,7 +408,7 @@ impl<'a> LowerCtx<'a> {
             // from mimz-sim in Task 1. No cell: a sub-range of existing
             // nets, not a new value.
             ExprKind::Slice { base, hi, lo } => {
-                let base_bits = self.lower_expr(module, base, locals);
+                let base_bits = self.lower_expr(module, base, locals, arrays);
                 let hi_val = crate::value::const_eval(hi, &self.design.consts)
                     .expect("checker guarantees slice bounds const-fold")
                     as usize;
@@ -411,9 +418,9 @@ impl<'a> LowerCtx<'a> {
                 Bits(base_bits.0[lo_val..=hi_val].to_vec())
             }
             ExprKind::IfExpr { cond, then, els } => {
-                let sel = self.lower_expr(module, cond, locals);
-                let a = self.lower_expr(module, then, locals);
-                let b = self.lower_expr(module, els, locals);
+                let sel = self.lower_expr(module, cond, locals, arrays);
+                let a = self.lower_expr(module, then, locals, arrays);
+                let b = self.lower_expr(module, els, locals, arrays);
                 let out_width = a.width().max(b.width());
                 let out = module.alloc_bits(out_width, None);
                 module.cells.push(Cell {
@@ -436,7 +443,7 @@ impl<'a> LowerCtx<'a> {
                 // comparison below means a genuinely distinct read site (or
                 // a re-inlined `fn` body, where the address really can
                 // differ per call).
-                let addr = self.lower_expr(module, index, locals);
+                let addr = self.lower_expr(module, index, locals, arrays);
                 let ports = self.mem_read.entry(mem.clone()).or_default();
                 // A DIFFERENT read site landing on the same memory. Same
                 // LOWERED address: share that port. Different address: grow
@@ -451,8 +458,113 @@ impl<'a> LowerCtx<'a> {
                     }
                 }
             }
+            // `base[index]` is triple-use: a full-width memory-word read
+            // handled above, an ARRAY-ELEMENT select when `base` is a bare
+            // `Ident` naming an in-scope flattened array (GAP-1 residual
+            // Task 6: `arrays` maps that name to its element count, set up
+            // by the `FnCall` arm below exactly where `call_locals` binds
+            // the `<name>_<i>` elements themselves), and a single-BIT select
+            // of a plain vector otherwise. Mirrors `value::mod.rs`'s own
+            // `ExprKind::Index` arm, which resolves the identical ambiguity
+            // the identical way: check `array_len(name)` FIRST, fall back to
+            // bit-select only when that fails.
+            //
+            // Unlike `Slice`'s `hi`/`lo`, the checker does NOT require a
+            // plain-vector index to const-fold (`checker/widths/expr/
+            // lvalue.rs` `index_in_range`: only `Ty::CtInt` is range-checked;
+            // a runtime signal passes through unchecked), so both a constant
+            // and a runtime `i` are real inputs in both the array and
+            // plain-vector cases.
+            ExprKind::Index { base, index } => {
+                if let ExprKind::Ident(n) = &base.kind
+                    && let Some(&len) = arrays.and_then(|a| a.get(n))
+                {
+                    let call_locals = locals
+                        .expect("an array-scope entry only ever exists alongside call_locals");
+                    match crate::value::const_eval(index, &self.design.consts) {
+                        // Constant index: pure re-pointing to the flattened
+                        // element's own `Bits` — no cell, same shape as
+                        // `Slice`/the plain-vector constant case below, just
+                        // at element width instead of 1 bit.
+                        Ok(i) => call_locals[&format!("{n}_{i}")].clone(),
+                        // Runtime index: `if idx==0 {name_0} else if idx==1
+                        // {name_1} else ... {name_{len-1}}`, folded from the
+                        // LAST element backward exactly like `lower_match`'s
+                        // reverse fold — so an out-of-range index falls
+                        // through every `Eq` to the unconditional last
+                        // element, matching the emitter's ternary-chain
+                        // default (spec/02 §1.14) and `value::mod.rs`'s own
+                        // clamp-to-last behaviour. Built entirely from this
+                        // file's existing `Eq`/`Mux` cells — no new CellKind.
+                        Err(_) => {
+                            let idx_bits = self.lower_expr(module, index, locals, arrays);
+                            let mut acc = call_locals[&format!("{n}_{}", len - 1)].clone();
+                            for i in (0..len - 1).rev() {
+                                let elem = call_locals[&format!("{n}_{i}")].clone();
+                                let i_bits = self.lower_const(
+                                    module,
+                                    &const_val(i as u128, idx_bits.width()),
+                                    e.span,
+                                );
+                                let eq = self.push_binary_cell(
+                                    module,
+                                    CellKind::Eq,
+                                    idx_bits.clone(),
+                                    i_bits,
+                                    1,
+                                    e.span,
+                                );
+                                let out_width = elem.width().max(acc.width());
+                                let out = module.alloc_bits(out_width, None);
+                                module.cells.push(Cell {
+                                    kind: CellKind::Mux,
+                                    pins: [
+                                        ("sel", eq),
+                                        ("a", elem),
+                                        ("b", acc),
+                                        ("out", out.clone()),
+                                    ]
+                                    .into_iter()
+                                    .collect(),
+                                    span: e.span,
+                                });
+                                acc = out;
+                            }
+                            acc
+                        }
+                    }
+                } else {
+                    // Plain vector: a constant `i` is a pure re-pointing, no
+                    // cell, exactly like `Slice` above. A runtime `i`
+                    // composes the existing `BinOp::Shr` lowering (`v >> i`,
+                    // via `lower_binop`) with a `Slice{0,0}` on ITS OWN
+                    // result: `Shr` never grows past `v`'s width regardless
+                    // of `i`'s runtime value (`lower_binop`'s `BinOp::Shr`
+                    // arm), so bit 0 of the shift's freshly-allocated `Bits`
+                    // is always net-index 0 — a CONSTANT slice despite `i`
+                    // itself being runtime, needing no bit-level indexing
+                    // machinery of its own.
+                    let base_bits = self.lower_expr(module, base, locals, arrays);
+                    match crate::value::const_eval(index, &self.design.consts) {
+                        Ok(i) => Bits(vec![base_bits.0[i as usize]]),
+                        Err(_) => {
+                            let idx_bits = self.lower_expr(module, index, locals, arrays);
+                            let shifted = self.lower_binop(
+                                module,
+                                BinOp::Shr,
+                                base_bits,
+                                idx_bits,
+                                None,
+                                false,
+                                e.span,
+                            );
+                            Bits(vec![shifted.0[0]])
+                        }
+                    }
+                }
+            }
             ExprKind::Match { scrutinee, arms } => {
-                self.lower_match(module, scrutinee, arms, e.span, locals)
+                self.lower_match(module, scrutinee, arms, e.span, locals, arrays)
             }
             ExprKind::FnCall { name, args } => {
                 let func = self.design.funcs.get(&name.name).unwrap_or_else(|| {
@@ -461,30 +573,62 @@ impl<'a> LowerCtx<'a> {
                         name.name
                     )
                 });
-                for param in &func.params {
+                // An array-typed param never gets ONE `call_locals` entry —
+                // it flattens to N, one per element, keyed `"{param}_{i}"`
+                // (i in 0..N) exactly like `emit_verilog`'s own scalar-port
+                // convention (`emit_verilog/module/funcs.rs`'s `arrays`
+                // bookkeeping and per-element `input` loop) and the AST/value
+                // evaluator's `eval_fn_call` (`value/fn_eval.rs`, same
+                // `"{}_{i}"` key). The call-site argument for such a param is
+                // always an array literal (`search([a, b, c, d], x)` —
+                // there's no surface syntax for anything else, since a module
+                // signal can never itself be array-typed, E0416): lower each
+                // element individually rather than trying to lower the
+                // `ArrayLit` as one expression (`lower_expr`'s catch-all does
+                // not handle `ExprKind::ArrayLit`, it's never a real value in
+                // its own right in this scheme). `call_arrays` records each
+                // flattened name's element count so the callee's OWN body
+                // can resolve `vals[i]` back through `ExprKind::Index`'s
+                // array branch above.
+                let mut call_locals: HashMap<String, Bits> = HashMap::new();
+                let mut call_arrays: HashMap<String, u32> = HashMap::new();
+                for (param, arg) in func.params.iter().zip(args) {
                     if matches!(param.ty, Type::Array { .. }) {
-                        unimplemented!(
-                            "array-typed fn params not yet lowered by Task 9 (out of scope — a \
-                             distinct, separately-tracked flattening concern, see emit_verilog's \
-                             array-param handling); fn `{}`, param `{}`",
-                            name.name,
-                            param.name.name
+                        let ExprKind::ArrayLit(elems) = &arg.kind else {
+                            unimplemented!(
+                                "array-typed fn-call argument must be an array literal (the \
+                                 only shape a module signal can produce, E0416); fn `{}`, \
+                                 param `{}`, got {:?}",
+                                name.name,
+                                param.name.name,
+                                arg.kind
+                            );
+                        };
+                        for (i, el) in elems.iter().enumerate() {
+                            call_locals.insert(
+                                format!("{}_{i}", param.name.name),
+                                self.lower_expr(module, el, locals, arrays),
+                            );
+                        }
+                        call_arrays.insert(param.name.name.clone(), elems.len() as u32);
+                    } else {
+                        call_locals.insert(
+                            param.name.name.clone(),
+                            self.lower_expr(module, arg, locals, arrays),
                         );
                     }
                 }
-                let arg_bits: Vec<Bits> = args
-                    .iter()
-                    .map(|a| self.lower_expr(module, a, locals))
-                    .collect();
-                let mut call_locals: HashMap<String, Bits> = HashMap::new();
-                for (param, bits) in func.params.iter().zip(arg_bits) {
-                    call_locals.insert(param.name.name.clone(), bits);
-                }
-                self.lower_fn_stmts(module, &func.stmts, &func.tail, &call_locals)
+                self.lower_fn_stmts(
+                    module,
+                    &func.stmts,
+                    &func.tail,
+                    &call_locals,
+                    Some(&call_arrays),
+                )
             }
             ExprKind::Call { func, args } => match func {
                 Builtin::Extend => {
-                    let base = self.lower_expr(module, &args[0], locals);
+                    let base = self.lower_expr(module, &args[0], locals, arrays);
                     let target = crate::value::const_eval(&args[1], &self.design.consts)
                         .expect("checker guarantees extend's width folds")
                         as u32;
@@ -505,7 +649,7 @@ impl<'a> LowerCtx<'a> {
                     }
                 }
                 Builtin::Trunc => {
-                    let base = self.lower_expr(module, &args[0], locals);
+                    let base = self.lower_expr(module, &args[0], locals, arrays);
                     let target = crate::value::const_eval(&args[1], &self.design.consts)
                         .expect("checker guarantees trunc's width folds")
                         as u32;
@@ -516,10 +660,10 @@ impl<'a> LowerCtx<'a> {
                     Bits(base.0[..(target.min(base.width())) as usize].to_vec())
                 }
                 Builtin::SignedCast | Builtin::UnsignedCast | Builtin::Encoding => {
-                    self.lower_expr(module, &args[0], locals)
+                    self.lower_expr(module, &args[0], locals, arrays)
                 }
                 Builtin::Nand | Builtin::Nor | Builtin::Xnor => {
-                    let a = self.lower_expr(module, &args[0], locals);
+                    let a = self.lower_expr(module, &args[0], locals, arrays);
                     let reduce_kind = match func {
                         Builtin::Nand => CellKind::RedAnd,
                         Builtin::Nor => CellKind::RedOr,
@@ -555,11 +699,27 @@ impl<'a> LowerCtx<'a> {
                      produces a Design"
                 ),
             },
+            // `{N{a, b}}` is Verilog-style replication: the inner concatenation
+            // `{a, b}` repeated `count` times. `count` always const-folds
+            // (checker-enforced) — the same guarantee `Slice`'s `hi`/`lo` already
+            // rely on. No cell: this is pure bit-vector reassembly (parts' nets
+            // are reused, not reallocated), same as `Concat`.
+            ExprKind::Replicate { count, parts } => {
+                let n = crate::value::const_eval(count, &self.design.consts)
+                    .expect("checker guarantees a replicate count const-folds")
+                    as usize;
+                let mut ids = Vec::new();
+                for _ in 0..n {
+                    for part in parts.iter().rev() {
+                        let bits = self.lower_expr(module, part, locals, arrays);
+                        ids.extend(bits.0);
+                    }
+                }
+                Bits(ids)
+            }
             other => unimplemented!(
-                "expression form not yet lowered by Task 5/6 (see later tasks for \
-                 field access; a bit-select `v[i]` on a plain vector — as opposed \
-                 to the memory read Task 10 handles above — also still needs \
-                 bit-level indexing machinery): {other:?}"
+                "expression form not yet lowered by Task 6 (see later tasks for \
+                 field access): {other:?}"
             ),
         };
         if locals.is_none() {
@@ -745,23 +905,24 @@ impl<'a> LowerCtx<'a> {
         stmts: &[FnStmt],
         tail: &Expr,
         locals: &HashMap<String, Bits>,
+        arrays: Option<&HashMap<String, u32>>,
     ) -> Bits {
         match stmts.split_first() {
-            None => self.lower_expr(module, tail, Some(locals)),
+            None => self.lower_expr(module, tail, Some(locals), arrays),
             Some((FnStmt::Let(l), rest)) => {
-                let v = self.lower_expr(module, &l.value, Some(locals));
+                let v = self.lower_expr(module, &l.value, Some(locals), arrays);
                 let mut locals2 = locals.clone();
                 locals2.insert(l.name.name.clone(), v);
-                self.lower_fn_stmts(module, rest, tail, &locals2)
+                self.lower_fn_stmts(module, rest, tail, &locals2, arrays)
             }
-            Some((FnStmt::Return(e), _rest)) => self.lower_expr(module, e, Some(locals)),
+            Some((FnStmt::Return(e), _rest)) => self.lower_expr(module, e, Some(locals), arrays),
             Some((FnStmt::If { cond, then, els }, rest)) => {
-                let sel = self.lower_expr(module, cond, Some(locals));
+                let sel = self.lower_expr(module, cond, Some(locals), arrays);
                 let then_full: Vec<FnStmt> = then.iter().chain(rest.iter()).cloned().collect();
-                let then_val = self.lower_fn_stmts(module, &then_full, tail, locals);
+                let then_val = self.lower_fn_stmts(module, &then_full, tail, locals, arrays);
                 let els_slice: &[FnStmt] = els.as_deref().unwrap_or(&[]);
                 let els_full: Vec<FnStmt> = els_slice.iter().chain(rest.iter()).cloned().collect();
-                let else_val = self.lower_fn_stmts(module, &els_full, tail, locals);
+                let else_val = self.lower_fn_stmts(module, &els_full, tail, locals, arrays);
                 let out_width = then_val.width().max(else_val.width());
                 let out = module.alloc_bits(out_width, None);
                 module.cells.push(Cell {
@@ -785,7 +946,9 @@ impl<'a> LowerCtx<'a> {
                      Loop/ForEach); span: {span:?}"
                 )
             }
-            Some((FnStmt::Error(_), rest)) => self.lower_fn_stmts(module, rest, tail, locals),
+            Some((FnStmt::Error(_), rest)) => {
+                self.lower_fn_stmts(module, rest, tail, locals, arrays)
+            }
         }
     }
 
@@ -898,7 +1061,65 @@ impl<'a> LowerCtx<'a> {
             BinOp::Ge => (CellKind::Ge { signed: cmp_signed }, 1),
             BinOp::LogicAnd => (CellKind::LogicAnd, 1),
             BinOp::LogicOr => (CellKind::LogicOr, 1),
-            other => unimplemented!("binop not yet lowered: {other:?}"),
+            // `??` never reaches `ir::lower` at MODULE level (wire/reg
+            // declarations, assignments, instance connections, fn-call
+            // arguments) in either of its two source forms — both are
+            // eliminated by `elaborate` before a `Design` exists, the same
+            // "checker-legal but always eliminated earlier" situation as
+            // `Builtin::Clog2`/`SyncDoubleFlop`/`SyncPulse` above
+            // (`ExprKind::Call` match). Verified empirically (not just by
+            // re-reading these citations) by
+            // `lower_coalesce_is_unreachable_for_both_source_forms` below,
+            // which runs a real `??` fixture through the full lex -> parse ->
+            // check -> elaborate_project -> lower pipeline and confirms no
+            // `BinOp::Coalesce` node survives into the `Design`:
+            // - unwrap form (`raw ?? 0`, scalar result): rewritten to an
+            //   `ExprKind::IfExpr` (`if raw.valid { raw.data } else { 0 }`)
+            //   by `Rw::expr`'s dedicated `Binary{Coalesce}` arm in
+            //   `elaborate/rewrite.rs` (`crates/mimz-core/src/elaborate/
+            //   rewrite.rs:58-91`), recursed into immediately.
+            // - OR-mux form (`x ?? y`, both sides and the result stay
+            //   bundle-typed): intercepted earlier still, at bundle-typed
+            //   signal-declaration/assignment/argument time, by
+            //   `bundle_field_expr` in `elaborate/bundle.rs`
+            //   (`crates/mimz-core/src/elaborate/bundle.rs:47-92`) — its own
+            //   doc comment states the OR-mux form "never reaches [`Rw::
+            //   expr`'s] generic scalar-expression rewrite".
+            //
+            // NOT proven for a bundle-typed `fn` PARAMETER used BARE (not
+            // via `.field`) inside the fn's own body, e.g. `fn f(h:
+            // Handshake) -> bits[8] { h ?? 0 }`: `flatten_bundle_refs_expr`
+            // (`elaborate/bundle.rs`) only rewrites `param.field` reads
+            // (its own guard is `Field`-on-`Ident`); its generic `Binary`
+            // arm just recurses into `lhs`/`rhs`, so a bare `Ident("h")`
+            // inside `h ?? 0` is never touched and a raw `Coalesce` node
+            // DOES survive into `design.funcs`. That input doesn't hit
+            // THIS arm today only because a separate, pre-existing bug
+            // panics one step earlier, resolving the bare `h` identifier
+            // itself ("no driver recorded for signal `h`") — see
+            // `docs/audit/gaps.md`'s "bare bundle-typed fn parameter"
+            // sub-gap. Fixing that earlier bug would very plausibly route
+            // straight into this `unreachable!()` for a checker-legal
+            // program, so this arm is a real correctness risk for that one
+            // shape, not just a redundant safety net.
+            BinOp::Coalesce => unreachable!(
+                "`??` (BinOp::Coalesce) never reaches ir::lower for a MODULE-level use \
+                 (wire/reg decl, assignment, instance connection, fn-call argument) — both \
+                 forms are eliminated by elaborate before a Design exists there: the unwrap \
+                 form (`raw ?? 0`) becomes an IfExpr in Rw::expr's own Binary{{Coalesce}} arm \
+                 (elaborate/rewrite.rs), and the OR-mux form (`x ?? y`, bundle-typed) is \
+                 intercepted at bundle-typed signal-declaration time by bundle_field_expr \
+                 (elaborate/bundle.rs) before it ever reaches a generic expression rewrite. \
+                 NOT proven for a bundle-typed fn parameter referenced bare (not via `.field`) \
+                 inside that fn's own body — see docs/audit/gaps.md's \"bare bundle-typed fn \
+                 parameter\" sub-gap; if you hit this panic from that shape, it's a real gap, \
+                 not a bug in this assertion"
+            ),
+            // No catch-all left: `BinOp` has exactly 20 variants (see
+            // `ast/expr.rs`) and every one is now matched explicitly above —
+            // a residual `other => unimplemented!(...)` arm here would be
+            // dead code (compiler-flagged `unreachable_patterns`), not a
+            // safety net for a future variant.
         };
         let out = module.alloc_bits(out_width, None);
         module.cells.push(Cell {
@@ -925,13 +1146,14 @@ impl<'a> LowerCtx<'a> {
         arms: &[crate::ast::Arm],
         span: crate::span::Span,
         locals: Option<&HashMap<String, Bits>>,
+        arrays: Option<&HashMap<String, u32>>,
     ) -> Bits {
-        let scrutinee_bits = self.lower_expr(module, scrutinee, locals);
+        let scrutinee_bits = self.lower_expr(module, scrutinee, locals, arrays);
         let n = arms.len();
-        let mut acc = self.lower_expr(module, &arms[n - 1].value, locals);
+        let mut acc = self.lower_expr(module, &arms[n - 1].value, locals, arrays);
         for arm in arms[..n - 1].iter().rev() {
             let sel = self.lower_pattern_conds(module, &scrutinee_bits, &arm.patterns, span);
-            let arm_value = self.lower_expr(module, &arm.value, locals);
+            let arm_value = self.lower_expr(module, &arm.value, locals, arrays);
             let out_width = arm_value.width().max(acc.width());
             let out = module.alloc_bits(out_width, None);
             module.cells.push(Cell {
@@ -1109,7 +1331,7 @@ impl<'a> LowerCtx<'a> {
                 if env.contains_key(&name.name) {
                     // `on`-block register lowering is always top-level, never
                     // inside a `fn` body — no call-local bindings in scope.
-                    let bits = self.lower_expr(module, val, None);
+                    let bits = self.lower_expr(module, val, None, None);
                     env.insert(name.name.clone(), bits);
                 }
             }
@@ -1119,7 +1341,7 @@ impl<'a> LowerCtx<'a> {
                 SeqStmt::Assign { lhs, rhs } => match self.assign_target(lhs) {
                     Target::Signal(name) => {
                         if env.contains_key(&name) {
-                            let bits = self.lower_expr(module, rhs, None);
+                            let bits = self.lower_expr(module, rhs, None, None);
                             env.insert(name, bits);
                         }
                     }
@@ -1135,8 +1357,8 @@ impl<'a> LowerCtx<'a> {
                             // whole-word `m[addr] <- v`, so the checker never
                             // lets a range reach a `design.mems` base.
                             let addr_expr = &lhs.index.as_ref().expect("MemWrite implies index").0;
-                            let addr = self.lower_expr(module, addr_expr, None);
-                            let data = self.lower_expr(module, rhs, None);
+                            let addr = self.lower_expr(module, addr_expr, None, None);
+                            let data = self.lower_expr(module, rhs, None, None);
                             let one = self.lower_const(module, &const_val(1, 1), lhs.span);
                             env.insert(wen_k, one);
                             env.insert(waddr_k, addr);
@@ -1145,7 +1367,7 @@ impl<'a> LowerCtx<'a> {
                     }
                 },
                 SeqStmt::If { cond, then, els } => {
-                    let sel = self.lower_expr(module, cond, None);
+                    let sel = self.lower_expr(module, cond, None, None);
                     let mut then_env = env.clone();
                     self.lower_seq_stmts(module, then, &mut then_env);
                     let mut else_env = env.clone();
