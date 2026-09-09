@@ -938,6 +938,97 @@ Verification: `cargo test -p mimz-core ir::` clean (100 passed, up from 98);
 `cargo test --workspace` clean (1434 passed); `cargo clippy --workspace
 --all-targets -- -D warnings` clean.
 
+### Sub-gap (2026-09-09, OPEN, architectural — Task-7-adjacent): `fn`-body `foreach`/loop unrolling is not lowered by `ir::lower`
+
+Found by Task 9's re-run of this plan's coverage probe (184/224, up from
+129/224): `fn_array_search.mimz`, `foreach_sum.mimz`, and the Tamil-pure
+`kootu.mimz` (10 of the 40 remaining failures, all flavors) still panic
+after Task 6 landed, but on a DIFFERENT arm than the one Task 6 fixed —
+`lower_fn_stmts`'s `FnStmt::Loop`/`FnStmt::ForEach` arm
+(`crates/mimz-core/src/ir/lower.rs:942-948`):
+
+```
+not implemented: loop/foreach unrolling inside fn bodies not yet lowered by
+Task 9 (needs const-var-substitution machinery, same gap as Task 8's
+on-block Loop/ForEach); span: ...
+```
+
+**Distinct from Task 6, not a regression of it.** Task 6 (the sub-gap
+immediately above) fixed array-typed `fn` PARAMETER flattening and
+per-element indexing (`vals[idx]`) — its own fixture is a one-line
+`pick(vals, idx) { vals[idx] }` body with no loop construct anywhere. This
+gap is a `foreach`/`repeat`-style loop written INSIDE an `fn` body's own
+statement list (`examples/*/foreach_sum.mimz`'s `fn sum8(values, acc) {
+foreach v in values { let acc = acc +% extend(v, 11) } acc }`) — a
+structurally separate AST shape (`FnStmt::Loop`/`FnStmt::ForEach`, not
+`ExprKind::Index`/`ExprKind::FnCall`) that Task 6 never touched or claimed
+to fix. Confirmed by grep: zero references to `FnStmt::Loop`/`FnStmt::ForEach`
+anywhere in Task 6's fix or its tests. The three examples Task 6's own "Why"
+section named as motivation clear Task 6's panic and immediately hit this
+next, adjacent one — invisible to every prior probe because the array-param
+panic fired first and masked it.
+
+**Naming coincidence, not a self-reference.** The panic text's own "Task 8"/
+"Task 9" citations are STALE — they refer to the OLDER 2026-09-05 GAP-1
+residual round's own task numbering (this exact arm predates the current
+2026-09-08 plan entirely; neither this plan's Task 8 nor its Task 9 wrote or
+touched it). A future reader should not confuse this with the current plan's
+own Task 9 (this entry) or Task 8 (the `Coalesce` sub-gap above).
+
+**Why this is architectural, not a quick fix.** Per the panic message's own
+diagnosis, unrolling a loop inside an `fn` body needs "const-var-substitution
+machinery" — binding the loop variable to each successive constant and
+re-lowering the body once per iteration, inline, inside a function-call
+context that already threads `locals`/`arrays` through recursively. This is
+a new lowering capability, not a missing cell or a resize, and it is the
+same shape of decision this project's constitution requires a dated plan +
+Decision-block for before code (same gate as Task 7, general signed IR
+values) — not something to fold into a "docs sync" task's normal gate.
+
+Not fixed here. Filed as a new dated plan candidate for whoever picks it up
+next, same as Task 7.
+
+### Sub-gap (2026-09-09, OPEN, narrow/fixable): `fn_return_guard.mimz` — the `if`/`return` mux-tree in `lower_fn_stmts`'s `FnStmt::If` arm sizes literals to their own natural width, not the function's declared return width
+
+Found by the same Task 9 probe re-run: `fn_return_guard.mimz` (all 5
+flavors) now validates with
+
+```
+PortWidthMismatch { port: "idx", declared: 4, found: 3 }
+```
+
+`fn find_first_set(a: bits[8]) -> signed[4] { if a[0]==1 { return 0 } ...
+if a[7]==1 { return 7 } -1 }` lowers its `if`/`return` chain to a
+right-nested `Mux` tree (`lower_fn_stmts`'s `FnStmt::If` arm,
+`crates/mimz-core/src/ir/lower.rs`, `out_width = then_val.width().max(
+else_val.width())`). Each `then_val` is a bare integer literal (`0`..`7`)
+lowered at ITS OWN natural width (`crate::bits::natural_width`) — never
+resized to `find_first_set`'s declared `signed[4]` (4-bit) return type. The
+widest literal (`7`) naturally needs 3 bits, so the whole tree comes out
+3 bits, one short of the port it ultimately drives.
+
+**Same root-cause class as Task 3 (sub-gap above), a third call site Task 3
+never reached.** Task 3 fixed exactly this "bare literal/const-ident sized
+at natural width instead of use-context width" bug at two call sites
+(`ExprKind::Binary`'s sibling-matching, and `resolve()`'s wire/output-driver
+path, via the new `lower_expr_sized` helper). `lower_fn_stmts`'s
+`FnStmt::If`/return-mux construction is a third, independent call site with
+the identical bug, which Task 3's brief did not name and Task 3's
+implementation did not touch.
+
+**Why this was invisible until now.** Task 5 (plain-vector bit-select,
+sub-gap above) named `fn_return_guard.mimz` as one of its two motivating
+examples and asserted it "lowers cleanly" after that fix — verified via a
+targeted unit fixture (`a[0]` in isolation), not the real example file
+through the full pipeline. The bit-select panic Task 5 fixed was masking
+this next-layer width bug the same way Task 6's panic masked the sub-gap
+immediately above.
+
+**Not fixed here** — out of Task 9's docs-only scope. A natural candidate
+for whoever next extends `lower_expr_sized`'s reach (or an equivalent
+sizing pass) to `lower_fn_stmts`'s return-value mux construction — narrow,
+same shape as Task 3, not a new architectural question.
+
 ---
 
 ## GAP-2 (MEDIUM) - Simulator is 2-state with a whole-value unknown flag; no X/Z, no tri-state
