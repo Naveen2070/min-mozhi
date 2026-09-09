@@ -47,23 +47,45 @@ language-feature work, now that Enum Variant Construction has shipped
       mux/concat/slice/`Dff`/`Mem`/`BlackBox`/`Const`), `Module::signals` for
       named-net lookup
 - [x] AST → IR lowering (enums encoded, match → mux trees, regs → FF cells) -
-      **✅ DONE 2026-09-04** (`ir/lower.rs`) - consumes the promoted
-      `elaborate::Design`; registers → `Dff`, memories → `Mem` with independent
-      `raddr`/`waddr` pins, `fn` calls inlined via continuation-splicing,
-      `extern module` instances → `BlackBox` cells; builtin function calls
-      (`extend`, etc.) remain unlowerable by design in v1 (GAP-1 sub-entry,
-      real feature work)
+      **✅ DONE 2026-09-04, extended through 2026-09-08** (`ir/lower.rs`) -
+      consumes the promoted `elaborate::Design`; registers → `Dff`, memories →
+      `Mem` with **N independent read ports** (`read_ports: Vec<(Bits, Bits)>`)
+      sharing one write port, `fn` calls inlined via continuation-splicing
+      (including array-typed params, flattened to N per-element scalars, and
+      constant/runtime plain-vector bit-select `v[i]`), `extern module`
+      instances → `BlackBox` cells. Still unlowerable, as of 2026-09-08's
+      IR-gaps closure plan (`docs/superpowers/plans/2026-09-08-ir-remaining-gaps.local.md`,
+      full detail in `docs/audit/gaps.md` GAP-1's sub-entries): `min`/`max`/
+      `abs` and `extend` when its argument's unsignedness can't be proven
+      (both trace to `ir::Bits` carrying no signed bit at all in v1;
+      flagged as its own Decision-block-gated follow-up, general signed IR
+      values, not required for this phase's exit criteria); `foreach`/loop
+      unrolling inside a `fn` body or an `on`-block (needs
+      const-var-substitution machinery - architectural, same Decision-block
+      gate as the signed-values item, own dated plan when picked up); a
+      `fn`-body `if`/`return` mux tree (`lower_fn_stmts`'s `FnStmt::If` arm)
+      still sizes literal branches at their own natural width instead of
+      the function's declared return width in some cases (narrow, the same
+      root-cause class as the literal/const-identifier context-sizing fix
+      below, just a third call site that fix didn't reach); a bit-select
+      LValue write (`q[3] <- ...`) is not yet lowered; `??` against a bare
+      bundle-typed `fn` parameter bypasses `elaborate`'s Coalesce
+      elimination and crashes via a separate, pre-existing `Ident`-resolution
+      panic (module-level `??` use is fully eliminated before `ir::lower`
+      ever sees it and is NOT affected).
 - [x] IR text format (dumpable, diffable, hand-writable for tests) -
       **✅ DONE 2026-09-04** (`ir/print_line.rs` + `ir/parse_line.rs`, line-based;
       `ir/print_sexpr.rs`, s-expr dump-only) - golden snapshots in
       `tests/golden/ir/`; `Module::extern_decls`/`signals` don't round-trip
       through text (documented v1 boundary)
 - [x] IR validation pass (re-checks single-driver, widths - defense in depth) -
-      **✅ DONE 2026-09-04** (`ir/validate.rs`) - 5 checks (multiple drivers,
-      undriven nets, pin width/arity, combinational cycles, black-box port
-      shape); rejection-fixture corpus in `tests/fixtures/ir_errors/` +
-      `tests/ir_validation.rs`; one real, documented, unexercised gap left open
-      (driven-set seeding is direction-blind for output ports, GAP-1 sub-entry)
+      **✅ DONE 2026-09-04, extended 2026-09-08** (`ir/validate.rs`) - 6 checks
+      (driver/undriven nets, fixed-width pin contracts e.g. `Mux.sel`,
+      same-width a/b pairs on bitwise/comparison/logical cells, combinational
+      cycles, black-box port shape against declared extern ports, output port
+      width against its source declaration - matching `ir/validate.rs`'s own
+      module doc comment); rejection-fixture corpus in
+      `tests/fixtures/ir_errors/` + `tests/ir_validation.rs`.
 
   IR executor (`ir/exec.rs`) and an IR-vs-kernel differential fuzz leg
   (`tests/differential_fuzz.rs`) also shipped alongside the above, covering
@@ -71,6 +93,17 @@ language-feature work, now that Enum Variant Construction has shipped
   lowering pass actually reaches. See `docs/architecture.md` section 2 (IR row)
   and the retired `phase-2-ir-design.local.md`/`phase-2-ir-plan.local.md` (19
   tasks, folded in here) for full design rationale and task-by-task history.
+
+  Coverage snapshot (2026-09-08 IR-gaps closure plan's own throwaway probe,
+  lex → parse → check → `elaborate_project` → `ir::lower` → `ir::validate`
+  over every `examples/**/*.mimz` file standalone): **184/224**, up from a
+  129/224 baseline. The 40 remaining failures break down as: 12 cross-file
+  `import`/`include` examples (a standalone-file probe artifact, not a real
+  gap — those files never fail through the real multi-file `mimz build`/
+  `mimz test` path), 13 in the signed-values class (`min`/`max`/`abs`,
+  `extend`), 10 in the `fn`-body loop/foreach class, and 5 the
+  `fn_return_guard.mimz` return-mux sizing gap — the last three all listed
+  above and tracked in `docs/audit/gaps.md` GAP-1.
 
 ### Optimizer (first passes)
 
