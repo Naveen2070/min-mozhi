@@ -22,9 +22,25 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1435 tests** as of 2026-09-08 (`cargo test --workspace`; the count is
+**1439 tests** as of 2026-09-10 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
-+2 from `crates/mimz-core/src/ir/tests/lower_consts.rs` (GAP-1 residual
++3 from `crates/mimz-core/src/ir/tests/lower_bitselect_write.rs` (2026-09-10
+IR-base-gap-closure plan, Task 4) —
+`lowers_constant_bit_select_write_as_a_masked_merge`,
+`lowers_runtime_bit_select_write_via_eq_mux_chain`, and
+`lowers_constant_slice_write_as_a_masked_merge`, pinning that a bit-select or
+slice LValue write (`q[3] <- ...`, `q[7:4] <- ...`) lowers as a per-bit merge
+into the target's current value instead of panicking — a constant index/
+bounds is pure re-pointing (no new cell), a runtime index builds one Eq +
+one merge Mux per bit position; +1 from
+`crates/mimz-core/src/ir/tests/lower_fn_inline.rs` (2026-09-10
+IR-base-gap-closure plan, Task 3) —
+`fn_if_return_mux_sizes_literals_to_the_declared_return_width`, pinning that
+`lower_fn_stmts`'s if/return mux tree sizes each literal branch to the
+function's declared return width instead of the widest literal's own
+natural width — the third call site of the literal/const context-sizing bug,
+fixed via the existing `lower_expr_sized` helper; a further +2 from
+`crates/mimz-core/src/ir/tests/lower_consts.rs` (GAP-1 residual
 Task 2, 2026-09-08) —
 `fn_body_references_file_level_const_as_shift_amount` and
 `module_body_references_module_parameter_directly`, pinning that

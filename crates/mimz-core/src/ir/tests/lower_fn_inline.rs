@@ -210,3 +210,50 @@ fn if_else_both_returning_produces_one_mux_selected_on_cond() {
     assert_eq!(mux.pins["b"], a_bits, "mux `b` is the else branch (x)");
     assert_eq!(*find_port(&module, "out"), mux.pins["out"]);
 }
+
+fn int_lit(value: u128) -> Expr {
+    Expr {
+        kind: ExprKind::Int {
+            value: crate::bits::Bits::Small(value),
+            raw: value.to_string(),
+        },
+        span: Span::default(),
+    }
+}
+
+/// Task 3 (2026-09-10 IR-base-gap-closure plan): the if/return mux tree
+/// must size each literal branch to the function's DECLARED return width
+/// (here `signed[4]`), not each literal's own natural width (`0` needs 1
+/// bit, `7` needs 3 bits) — the third call site of the literal/const
+/// context-sizing bug already fixed twice elsewhere via `lower_expr_sized`.
+#[test]
+fn fn_if_return_mux_sizes_literals_to_the_declared_return_width() {
+    let func = FuncDecl {
+        name: id("find_first_set"),
+        params: vec![fn_param("sel")],
+        ret: Type::Signed(Box::new(int_lit(4))),
+        stmts: vec![FnStmt::If {
+            cond: ident("sel"),
+            then: vec![FnStmt::Return(int_lit(0))],
+            els: Some(vec![FnStmt::Return(int_lit(7))]),
+        }],
+        // Unreachable (every path returns) — placeholder tail, never lowered.
+        tail: ident("sel"),
+        span: Span::default(),
+    };
+    let design = base_design(func, fn_call("find_first_set", vec![ident("sel")]));
+    let module = lower(&design);
+
+    let mux_cells: Vec<&Cell> = module
+        .cells
+        .iter()
+        .filter(|c| c.kind == CellKind::Mux)
+        .collect();
+    assert_eq!(mux_cells.len(), 1, "one Mux for the if/return");
+    let mux = mux_cells[0];
+    assert_eq!(
+        mux.pins["out"].width(),
+        4,
+        "return-mux output must match the declared signed[4] width (4), not the widest literal's natural width (7 needs 3 bits)"
+    );
+}
