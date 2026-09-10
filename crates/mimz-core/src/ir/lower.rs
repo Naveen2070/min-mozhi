@@ -618,12 +618,16 @@ impl<'a> LowerCtx<'a> {
                         );
                     }
                 }
+                let (ret_width, _ret_signed) =
+                    crate::value::type_width(&func.ret, &self.design.consts, func.span)
+                        .expect("checker guarantees a fn's declared return type resolves");
                 self.lower_fn_stmts(
                     module,
                     &func.stmts,
                     &func.tail,
                     &call_locals,
                     Some(&call_arrays),
+                    ret_width,
                 )
             }
             ExprKind::Call { func, args } => match func {
@@ -728,9 +732,10 @@ impl<'a> LowerCtx<'a> {
         result
     }
 
-    /// Classifies an assignment target. A bit-select write to a plain
-    /// signal needs bit-level assignment logic no task implements yet —
-    /// panic loudly rather than silently mis-widening the target.
+    /// Classifies an assignment target. A bit-select/slice write to a
+    /// plain signal is a `Target::BitSelect` — the actual per-bit merge
+    /// happens in `lower_seq_stmts`'s `SeqStmt::Assign` arm, which still
+    /// has `lhs.index` in scope.
     fn assign_target(&self, lhs: &LValue) -> Target {
         if lhs.index.is_none() {
             return Target::Signal(lhs.base.name.clone());
@@ -738,10 +743,77 @@ impl<'a> LowerCtx<'a> {
         if self.design.mems.iter().any(|m| m.name == lhs.base.name) {
             return Target::MemWrite(lhs.base.name.clone());
         }
-        unimplemented!(
-            "bit-select LValue writes (`q[3] <- ...`) not yet lowered by Task 8; span: {:?}",
-            lhs.span
-        );
+        Target::BitSelect(lhs.base.name.clone())
+    }
+
+    /// Merges `rhs` into `base_bits` at the position(s) `first`/`second`
+    /// describe, keeping every other bit of `base_bits` unchanged.
+    /// `first`/`second: None` is a single-bit write (`q[i] <- v`, `i` may
+    /// be constant or a runtime signal); `second: Some(lo)` is a slice
+    /// write (`q[hi:lo] <- v`), whose bounds ALWAYS const-fold (checker-
+    /// enforced, same guarantee a plain `Slice` read relies on).
+    fn lower_bitselect_write(
+        &mut self,
+        module: &mut Module,
+        base_bits: &Bits,
+        first: &Expr,
+        second: Option<&Expr>,
+        rhs: Bits,
+        span: crate::span::Span,
+    ) -> Bits {
+        match second {
+            Some(lo) => {
+                let hi = crate::value::const_eval(first, &self.design.consts)
+                    .expect("checker guarantees a slice write's hi bound const-folds")
+                    as usize;
+                let lo = crate::value::const_eval(lo, &self.design.consts)
+                    .expect("checker guarantees a slice write's lo bound const-folds")
+                    as usize;
+                let mut nets = base_bits.0.clone();
+                nets[lo..=hi].clone_from_slice(&rhs.0);
+                Bits(nets)
+            }
+            None => match crate::value::const_eval(first, &self.design.consts) {
+                Ok(i) => {
+                    let mut nets = base_bits.0.clone();
+                    nets[i as usize] = rhs.0[0];
+                    Bits(nets)
+                }
+                Err(_) => {
+                    let idx_bits = self.lower_expr(module, first, None, None);
+                    let width = base_bits.width();
+                    let mut nets = Vec::with_capacity(width as usize);
+                    for i in 0..width {
+                        let i_const =
+                            self.lower_const(module, &const_val(i as u128, idx_bits.width()), span);
+                        let is_i = self.push_binary_cell(
+                            module,
+                            CellKind::Eq,
+                            idx_bits.clone(),
+                            i_const,
+                            1,
+                            span,
+                        );
+                        let base_bit = Bits(vec![base_bits.0[i as usize]]);
+                        let out = module.alloc_bits(1, None);
+                        module.cells.push(Cell {
+                            kind: CellKind::Mux,
+                            pins: [
+                                ("sel", is_i),
+                                ("a", rhs.clone()),
+                                ("b", base_bit),
+                                ("out", out.clone()),
+                            ]
+                            .into_iter()
+                            .collect(),
+                            span,
+                        });
+                        nets.push(out.0[0]);
+                    }
+                    Bits(nets)
+                }
+            },
+        }
     }
 
     /// `(name, word width)` of the memory `base` indexes, if `base` is a
@@ -906,25 +978,32 @@ impl<'a> LowerCtx<'a> {
         tail: &Expr,
         locals: &HashMap<String, Bits>,
         arrays: Option<&HashMap<String, u32>>,
+        target_width: u32,
     ) -> Bits {
         match stmts.split_first() {
-            None => self.lower_expr(module, tail, Some(locals), arrays),
+            None => self.lower_expr_sized(module, tail, Some(locals), arrays, target_width),
             Some((FnStmt::Let(l), rest)) => {
                 let v = self.lower_expr(module, &l.value, Some(locals), arrays);
                 let mut locals2 = locals.clone();
                 locals2.insert(l.name.name.clone(), v);
-                self.lower_fn_stmts(module, rest, tail, &locals2, arrays)
+                self.lower_fn_stmts(module, rest, tail, &locals2, arrays, target_width)
             }
-            Some((FnStmt::Return(e), _rest)) => self.lower_expr(module, e, Some(locals), arrays),
+            Some((FnStmt::Return(e), _rest)) => {
+                self.lower_expr_sized(module, e, Some(locals), arrays, target_width)
+            }
             Some((FnStmt::If { cond, then, els }, rest)) => {
                 let sel = self.lower_expr(module, cond, Some(locals), arrays);
                 let then_full: Vec<FnStmt> = then.iter().chain(rest.iter()).cloned().collect();
-                let then_val = self.lower_fn_stmts(module, &then_full, tail, locals, arrays);
+                let then_val =
+                    self.lower_fn_stmts(module, &then_full, tail, locals, arrays, target_width);
                 let els_slice: &[FnStmt] = els.as_deref().unwrap_or(&[]);
                 let els_full: Vec<FnStmt> = els_slice.iter().chain(rest.iter()).cloned().collect();
-                let else_val = self.lower_fn_stmts(module, &els_full, tail, locals, arrays);
-                let out_width = then_val.width().max(else_val.width());
-                let out = module.alloc_bits(out_width, None);
+                let else_val =
+                    self.lower_fn_stmts(module, &els_full, tail, locals, arrays, target_width);
+                // Both branches are now already sized to target_width by the
+                // Return/tail arms above — out_width no longer needs
+                // max(then, else); it IS target_width, by construction.
+                let out = module.alloc_bits(target_width, None);
                 module.cells.push(Cell {
                     kind: CellKind::Mux,
                     pins: [
@@ -941,13 +1020,12 @@ impl<'a> LowerCtx<'a> {
             }
             Some((FnStmt::Loop { span, .. }, _)) | Some((FnStmt::ForEach { span, .. }, _)) => {
                 unimplemented!(
-                    "loop/foreach unrolling inside fn bodies not yet lowered by Task 9 \
-                     (needs const-var-substitution machinery, same gap as Task 8's on-block \
-                     Loop/ForEach); span: {span:?}"
+                    "loop/foreach unrolling inside fn bodies not yet lowered (needs \
+                     const-var-substitution machinery); span: {span:?}"
                 )
             }
             Some((FnStmt::Error(_), rest)) => {
-                self.lower_fn_stmts(module, rest, tail, locals, arrays)
+                self.lower_fn_stmts(module, rest, tail, locals, arrays, target_width)
             }
         }
     }
@@ -1365,6 +1443,23 @@ impl<'a> LowerCtx<'a> {
                             env.insert(wdata_k, data);
                         }
                     }
+                    Target::BitSelect(name) => {
+                        if env.contains_key(&name) {
+                            let (first, second) =
+                                lhs.index.as_ref().expect("BitSelect implies index");
+                            let base_bits = env[&name].clone();
+                            let rhs_bits = self.lower_expr(module, rhs, None, None);
+                            let merged = self.lower_bitselect_write(
+                                module,
+                                &base_bits,
+                                first,
+                                second.as_ref(),
+                                rhs_bits,
+                                lhs.span,
+                            );
+                            env.insert(name, merged);
+                        }
+                    }
                 },
                 SeqStmt::If { cond, then, els } => {
                     let sel = self.lower_expr(module, cond, None, None);
@@ -1429,6 +1524,7 @@ impl<'a> LowerCtx<'a> {
 enum Target {
     Signal(String),
     MemWrite(String),
+    BitSelect(String),
 }
 
 /// Lowers an elaborated `Design` into a `Module`.

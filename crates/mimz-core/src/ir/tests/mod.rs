@@ -2,6 +2,7 @@ mod exec;
 mod lower_array_fn_params;
 mod lower_basic;
 mod lower_binops;
+mod lower_bitselect_write;
 mod lower_blackbox;
 mod lower_builtins;
 mod lower_consts;
