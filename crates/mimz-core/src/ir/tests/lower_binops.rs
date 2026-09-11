@@ -5,6 +5,17 @@ use crate::ir::{CellKind, lower, validate};
 use crate::span::Span;
 use std::collections::BTreeMap;
 
+/// Runs the real lex -> parse -> check -> elaborate_project pipeline over
+/// `src`, returning the elaborated `Design`. Shared by the `Coalesce`
+/// regression tests below — a hand-built `Design` would bypass `elaborate`
+/// entirely and prove nothing about bugs that live in that pass.
+fn elaborate_src(src: &str) -> Design {
+    let file = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+    crate::checker::check(std::slice::from_ref(&file)).expect("checks clean");
+    crate::elaborate::elaborate_project(std::slice::from_ref(&file), None, &BTreeMap::new())
+        .expect("elaborates")
+}
+
 #[test]
 fn lowers_wire_add_of_two_inputs_to_an_add_cell() {
     let design = adder_design();
@@ -1439,13 +1450,6 @@ fn a_wide_compile_time_constant_expression_lowers_exactly_not_saturated_to_i128_
 /// shape (fixed 2026-09-15).
 #[test]
 fn lower_coalesce_is_unreachable_for_both_source_forms() {
-    fn elaborate_src(src: &str) -> Design {
-        let file = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
-        crate::checker::check(std::slice::from_ref(&file)).expect("checks clean");
-        crate::elaborate::elaborate_project(std::slice::from_ref(&file), None, &BTreeMap::new())
-            .expect("elaborates")
-    }
-
     // Unwrap form: `raw ?? 0` (scalar result) — eliminated by `Rw::expr`'s
     // dedicated `Binary{Coalesce}` arm in `elaborate/rewrite.rs`.
     let unwrap_src = "module M {\n  in c: bit\n  in d: bits[8]\n  out o: bits[8]\n  \
