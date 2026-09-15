@@ -1164,22 +1164,19 @@ impl<'a> LowerCtx<'a> {
             //   doc comment states the OR-mux form "never reaches [`Rw::
             //   expr`'s] generic scalar-expression rewrite".
             //
-            // NOT proven for a bundle-typed `fn` PARAMETER used BARE (not
-            // via `.field`) inside the fn's own body, e.g. `fn f(h:
-            // Handshake) -> bits[8] { h ?? 0 }`: `flatten_bundle_refs_expr`
-            // (`elaborate/bundle.rs`) only rewrites `param.field` reads
-            // (its own guard is `Field`-on-`Ident`); its generic `Binary`
-            // arm just recurses into `lhs`/`rhs`, so a bare `Ident("h")`
-            // inside `h ?? 0` is never touched and a raw `Coalesce` node
-            // DOES survive into `design.funcs`. That input doesn't hit
-            // THIS arm today only because a separate, pre-existing bug
-            // panics one step earlier, resolving the bare `h` identifier
-            // itself ("no driver recorded for signal `h`") — see
-            // `docs/audit/gaps.md`'s "bare bundle-typed fn parameter"
-            // sub-gap. Fixing that earlier bug would very plausibly route
-            // straight into this `unreachable!()` for a checker-legal
-            // program, so this arm is a real correctness risk for that one
-            // shape, not just a redundant safety net.
+            // Also proven (2026-09-15) for a bundle-typed `fn` PARAMETER
+            // used BARE (not via `.field`) inside the fn's own body, e.g.
+            // `fn f(h: Handshake) -> bits[8] { h ?? 0 }` — the UNWRAP form
+            // only. `flatten_bundle_refs_expr` (`elaborate/bundle.rs`) now
+            // has its own `Binary{Coalesce}` case mirroring `Rw::expr`'s
+            // desugaring exactly (`.valid`/`.data` field access + `IfExpr`,
+            // recursed back through itself so the resulting `Field` nodes
+            // flatten to `h_valid`/`h_data`). The OR-mux form (`x ?? y`,
+            // bundle-typed result) for a bare bundle-typed fn TAIL is still
+            // unproven — no fn-body equivalent of `bundle_field_expr`'s
+            // signal-declaration-time interception exists — see
+            // `docs/audit/gaps.md`'s resolution note for the (closed)
+            // "bare bundle-typed fn parameter" sub-gap.
             BinOp::Coalesce => unreachable!(
                 "`??` (BinOp::Coalesce) never reaches ir::lower for a MODULE-level use \
                  (wire/reg decl, assignment, instance connection, fn-call argument) — both \
@@ -1188,10 +1185,12 @@ impl<'a> LowerCtx<'a> {
                  (elaborate/rewrite.rs), and the OR-mux form (`x ?? y`, bundle-typed) is \
                  intercepted at bundle-typed signal-declaration time by bundle_field_expr \
                  (elaborate/bundle.rs) before it ever reaches a generic expression rewrite. \
-                 NOT proven for a bundle-typed fn parameter referenced bare (not via `.field`) \
-                 inside that fn's own body — see docs/audit/gaps.md's \"bare bundle-typed fn \
-                 parameter\" sub-gap; if you hit this panic from that shape, it's a real gap, \
-                 not a bug in this assertion"
+                 Also eliminated for a bare bundle-typed fn PARAMETER's unwrap-form use \
+                 (`h ?? 0` inside the fn's own body) by flatten_bundle_refs_expr's own \
+                 Binary{{Coalesce}} case (elaborate/bundle.rs) — see \
+                 docs/audit/gaps.md's \"bare bundle-typed fn parameter\" sub-gap for what's \
+                 still NOT covered (the OR-mux form for a bundle-typed fn tail); if you hit \
+                 this panic from that shape, it's a real gap, not a bug in this assertion"
             ),
             // No catch-all left: `BinOp` has exactly 20 variants (see
             // `ast/expr.rs`) and every one is now matched explicitly above —

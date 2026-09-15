@@ -1434,9 +1434,9 @@ fn a_wide_compile_time_constant_expression_lowers_exactly_not_saturated_to_i128_
 /// stronger, direct check — a `{design:?}` scan covers `comb`, `procs`,
 /// `asserts`, and `covers` alike, not just the one field each fixture happens
 /// to drive). Does NOT cover a bundle-typed `fn` parameter referenced bare
-/// (not via `.field`) inside that fn's own body — see the arm's own comment
-/// and `docs/audit/gaps.md`'s "bare bundle-typed fn parameter" sub-gap for
-/// that separate, still-open gap.
+/// (not via `.field`) inside that fn's own body — see
+/// `bare_bundle_typed_fn_param_coalesce_unwrap_is_eliminated` below for that
+/// shape (fixed 2026-09-15).
 #[test]
 fn lower_coalesce_is_unreachable_for_both_source_forms() {
     fn elaborate_src(src: &str) -> Design {
@@ -1472,4 +1472,42 @@ fn lower_coalesce_is_unreachable_for_both_source_forms() {
         "OR-mux form `x ?? y` must not survive elaborate_project as a Coalesce node"
     );
     let _ = lower(&or_mux_design); // must not panic
+}
+
+/// 2026-09-15 fix: a bundle-typed `fn` PARAMETER referenced BARE (not via
+/// `.field`) inside the fn's own body, combined with the unwrap form of
+/// `??`, used to panic in `ir::lower::resolve()` ("no driver recorded for
+/// signal `h`") before `Coalesce` was ever reached — `flatten_bundle_refs_expr`
+/// (`elaborate/bundle.rs`) only rewrote `param.field` reads, so a bare
+/// `Ident("h")` inside `h ?? 0` was never flattened to `h_valid`/`h_data`
+/// and a raw `Coalesce` node survived into `design.funcs`. Fixed by giving
+/// `flatten_bundle_refs_expr` its own `Binary{Coalesce}` case mirroring
+/// `Rw::expr`'s desugaring. Runs the real lex -> parse -> check ->
+/// elaborate_project -> lower pipeline (same discipline as the sibling test
+/// above), asserting `lower()` does not panic, the elaborated `Design`
+/// contains no `Coalesce` node, and the lowered module validates cleanly.
+/// The OR-mux form for a bundle-typed fn TAIL is a separate, still-open
+/// gap (see `docs/audit/gaps.md`) — not exercised here.
+#[test]
+fn bare_bundle_typed_fn_param_coalesce_unwrap_is_eliminated() {
+    let src = "bundle Handshake(W: int = 8) {\n  valid: bit\n  data: bits[W]\n}\n\
+               fn get_or(h: Handshake(W: 8)) -> bits[8] {\n  h ?? 0\n}\n\
+               module M {\n  in c: bit\n  in d: bits[8]\n  out y: bits[8]\n  \
+               y = get_or({ valid: c, data: d })\n}\n";
+    let file = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+    crate::checker::check(std::slice::from_ref(&file)).expect("checks clean");
+    let design =
+        crate::elaborate::elaborate_project(std::slice::from_ref(&file), None, &BTreeMap::new())
+            .expect("elaborates");
+    assert!(
+        !format!("{design:?}").contains("Coalesce"),
+        "bare bundle-param `h ?? 0` inside a fn body must not survive elaborate_project \
+         as a Coalesce node"
+    );
+    let module = lower(&design); // must not panic
+    assert_eq!(
+        validate::validate(&module),
+        Vec::new(),
+        "lowered module must validate cleanly"
+    );
 }
