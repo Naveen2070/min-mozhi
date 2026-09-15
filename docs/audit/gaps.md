@@ -707,7 +707,7 @@ resolved here.
 Verification: `cargo test -p mimz-core ir::` clean; `cargo clippy
 --workspace --all-targets -- -D warnings` clean.
 
-### Sub-gap (2026-09-08, OPEN): `??` against a bare bundle-typed `fn` parameter bypasses elaborate's Coalesce elimination entirely, and currently crashes via a separate, undocumented `Ident`-resolution panic
+### Sub-gap (2026-09-08, RESOLVED 2026-09-15 for the unwrap form): `??` against a bare bundle-typed `fn` parameter bypasses elaborate's Coalesce elimination entirely, and currently crashes via a separate, undocumented `Ident`-resolution panic
 
 Found by Task 8's own fix-round review, re-checking the "Resolved" claim
 above against a shape neither this entry's original investigation nor
@@ -751,6 +751,81 @@ program.
 Not fixed here — out of scope for Task 8 (which only owns `lower_binop`'s
 `Coalesce` arm and its own justification), left for whoever next touches
 `flatten_bundle_refs_expr` or fn-body bundle-parameter handling generally.
+
+**Resolved 2026-09-15, for the unwrap form only.** Root-caused as two
+independent, currently-masking-each-other bugs, both in
+`flatten_bundle_refs_expr` (`elaborate/bundle.rs`), re-verified against live
+source rather than trusting this entry's own citations (line numbers had
+drifted since 2026-09-08):
+
+1. **The real bug.** `flatten_bundle_refs_expr`'s only special case was
+   `Field { base: Ident(p), field }` → `Ident("{p}_{field}")`
+   (`bundle.rs:235-240`); its `Binary` arm (`bundle.rs:256-260`) just
+   recursed into `lhs`/`rhs` generically, with no `BinOp::Coalesce` case at
+   all — unlike `Rw::expr`'s module-level counterpart
+   (`elaborate/rewrite.rs:58-91`), which already desugars the unwrap form
+   to `IfExpr{cond: lhs.valid, then: lhs.data, els: rhs}`.
+   `flatten_bundle_refs_expr` simply never learned the same trick, so a
+   bare `Ident("h")` inside `h ?? 0` walked through unchanged.
+2. **The masking bug (separate, still open).** Because bug 1 left an
+   unflattened `Ident("h")` inside a surviving `Coalesce` node, and the
+   flattened `fn`'s param list no longer has a param named `h` (only
+   `h_valid`/`h_data`), `ir::lower`'s `ExprKind::FnCall` inlining panicked
+   resolving `Ident("h")` — ``"no driver recorded for signal `h`"`` —
+   before `lower_binop` ever saw the `Coalesce` node. This is why the
+   panic this entry originally reported was the `Ident`-resolution one,
+   not Task 8's `unreachable!()` arm. Fixing bug 1 alone removes the
+   `Coalesce` node entirely (same elimination mechanism as every other
+   working case), so bug 2 never gets a chance to fire for THIS shape —
+   confirmed by tracing the resulting AST, not assumed. Bug 2 itself
+   (`ir::lower`'s `resolve()`/`Ident` handling has no notion of a bundle
+   param at all) is unfixed and would still bite a DIFFERENT bare-bundle-
+   param shape that has no `??` involved at all, e.g. a `fn` returning a
+   whole bundle by identity (`fn f(h: Handshake) -> Handshake { h }`) —
+   not reproduced or scoped here, left as a distinct residual for whoever
+   next touches bare (non-`.field`, non-`??`) bundle-param `Ident`
+   resolution.
+
+**Fix.** `flatten_bundle_refs_expr` gained its own `Binary{Coalesce}` case,
+mirroring `Rw::expr`'s desugaring exactly (`.valid`/`.data` `Field` access
+on `lhs`, `IfExpr{cond, then, els: rhs}`), then recursing the rewritten
+node back through `flatten_bundle_refs_expr` itself so the `Field {
+base: Ident(h), .. }` nodes it just produced get flattened to
+`Ident("h_valid")`/`Ident("h_data")` by the function's own pre-existing
+check — no new mechanism, just one more call site for an already-proven
+one. `ir::lower`'s `BinOp::Coalesce => unreachable!()` arm (Task 8) needed
+no code change, only a comment correction: it used to explicitly disclaim
+this shape ("NOT proven for a bundle-typed fn parameter referenced bare");
+that sentence is now stale and was corrected in the same change, same
+discipline Task 8 itself used when it corrected this entry's own first
+(wrong) hypothesis.
+
+**Scope: unwrap form only.** The OR-mux form (`x ?? y`, both sides and the
+result stay bundle-typed) is still open. `Rw::expr`'s module-level Coalesce
+arm handles only the unwrap form too — OR-mux is intercepted earlier, at
+bundle-typed _signal-declaration_ time, by `bundle_field_expr`
+(`bundle.rs:47-114`), a mechanism `Rw::expr` never reaches. A `fn` has no
+comparable interception point for its own bundle-typed TAIL/return value —
+`flatten_bundle_params_in_func` only flattens PARAMS, never `ret`.
+A `fn` returning a bundle via `a ?? b` (both bare bundle params) is
+therefore a distinct, still-open gap — same category of limitation as this
+sub-gap's own module-level OR-mux boundary, just one level deeper. Not
+attempted here.
+
+New test (`crates/mimz-core/src/ir/tests/lower_binops.rs`):
+`bare_bundle_typed_fn_param_coalesce_unwrap_is_eliminated` — runs the real
+lex → parse → check → `elaborate_project` → `ir::lower` pipeline over
+`fn get_or(h: Handshake(W: 8)) -> bits[8] { h ?? 0 }` called from a real
+module, asserting `lower()` does not panic, the elaborated `Design`
+contains no `Coalesce` node anywhere (`{design:?}` scan, same strength as
+Task 8's own test), and the lowered module validates cleanly.
+
+Verification: `cargo test -p mimz-core ir::` clean (106 passed); `cargo
+test --workspace` clean (1440 passed); `cargo clippy --workspace
+--all-targets -- -D warnings` clean; `cargo fmt --all -- --check` clean.
+
+Plan: `docs/superpowers/plans/2026-09-15-bare-bundle-param-coalesce.local.md`
+(deleted once this entry and `docs/log/2026-09-15.md` carried its content).
 
 ### Sub-gap (2026-09-08, RESOLVED 2026-09-08 — GAP-1 residual Task 4): `ir::lower` could not lower `ExprKind::Replicate`
 
