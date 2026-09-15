@@ -238,6 +238,59 @@ fn flatten_bundle_refs_expr(e: &Expr, bundle_params: &HashSet<String>) -> Expr {
     {
         return ident_expr(format!("{b}_{}", field.name), e.span);
     }
+    // Unwrap-form `??` (`h ?? 0`, scalar result) — the fn-body counterpart
+    // of `Rw::expr`'s own `Binary{Coalesce}` arm (`elaborate/rewrite.rs`),
+    // which this function otherwise never sees: a bundle-typed `fn` param
+    // referenced bare (not via `.field`) has no `Field` node for the
+    // check above to catch, so `lhs`/`rhs` used to recurse unchanged,
+    // leaving `Ident("h")` — no longer a real param name after flattening
+    // (only `h_valid`/`h_data` are) — to panic in `ir::lower::resolve()`
+    // before `Coalesce` itself was ever reached. Desugar exactly like
+    // `Rw::expr` does (`.valid`/`.data` field access + `IfExpr`), then
+    // recurse the rewritten node back through this same function so the
+    // `Field { base: Ident(h), .. }` nodes it just produced get flattened
+    // by the check above. The OR-mux form (`x ?? y`, both sides and the
+    // result stay bundle-typed) is NOT handled here, same boundary
+    // `Rw::expr` itself has: it needs a bundle-typed-declaration-time
+    // interception point (`bundle_field_expr`'s module-level trick) that
+    // a fn's bundle-typed TAIL has no equivalent of in this codebase —
+    // see `docs/audit/gaps.md`'s resolution note for this sub-gap.
+    if let ExprKind::Binary {
+        op: BinOp::Coalesce,
+        lhs,
+        rhs,
+    } = &e.kind
+    {
+        let valid_field = Expr {
+            kind: ExprKind::Field {
+                base: lhs.clone(),
+                field: ast::Ident {
+                    name: "valid".to_string(),
+                    span: lhs.span,
+                },
+            },
+            span: lhs.span,
+        };
+        let data_field = Expr {
+            kind: ExprKind::Field {
+                base: lhs.clone(),
+                field: ast::Ident {
+                    name: "data".to_string(),
+                    span: lhs.span,
+                },
+            },
+            span: lhs.span,
+        };
+        let if_expr = Expr {
+            kind: ExprKind::IfExpr {
+                cond: Box::new(valid_field),
+                then: Box::new(data_field),
+                els: rhs.clone(),
+            },
+            span: e.span,
+        };
+        return flatten_bundle_refs_expr(&if_expr, bundle_params);
+    }
     let kind = match &e.kind {
         ExprKind::Int { value, raw } => ExprKind::Int {
             value: value.clone(),
