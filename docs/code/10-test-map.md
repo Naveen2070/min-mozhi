@@ -22,7 +22,7 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1439 tests** as of 2026-09-10 (`cargo test --workspace`; the count is
+**1440 tests** as of 2026-09-15 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
 +3 from `crates/mimz-core/src/ir/tests/lower_bitselect_write.rs` (2026-09-10
 IR-base-gap-closure plan, Task 4) —
@@ -171,7 +171,14 @@ lex -> parse -> check -> elaborate_project -> lower pipeline over both of
 `??`'s source forms and confirming empirically that no `BinOp::Coalesce`
 node survives elaboration into a `Design` — pins `lower_binop`'s new
 `BinOp::Coalesce => unreachable!(...)` arm; see GAP-1's `BinOp::Coalesce`
-sub-gap (now RESOLVED) in `docs/audit/gaps.md`):
+sub-gap (now RESOLVED) in `docs/audit/gaps.md`); one more from
+`crates/mimz-core/src/ir/tests/lower_binops.rs` (2026-09-15) —
+`bare_bundle_typed_fn_param_coalesce_unwrap_is_eliminated`, pinning that
+`flatten_bundle_refs_expr`'s new `Binary{Coalesce}` case
+(`elaborate/bundle.rs`) now also eliminates the unwrap form of `??` used
+against a bare bundle-typed `fn` parameter inside that fn's own body
+(`h ?? 0`), closing the "bare bundle-typed fn parameter" sub-gap in
+`docs/audit/gaps.md`:
 
 | Where it lives                                      |    Count | Kind                                                   |
 | --------------------------------------------------- | -------: | ------------------------------------------------------ |
