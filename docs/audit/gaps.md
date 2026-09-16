@@ -801,16 +801,62 @@ discipline Task 8 itself used when it corrected this entry's own first
 (wrong) hypothesis.
 
 **Scope: unwrap form only.** The OR-mux form (`x ?? y`, both sides and the
-result stay bundle-typed) is still open. `Rw::expr`'s module-level Coalesce
-arm handles only the unwrap form too — OR-mux is intercepted earlier, at
-bundle-typed _signal-declaration_ time, by `bundle_field_expr`
-(`bundle.rs:47-114`), a mechanism `Rw::expr` never reaches. A `fn` has no
-comparable interception point for its own bundle-typed TAIL/return value —
-`flatten_bundle_params_in_func` only flattens PARAMS, never `ret`.
-A `fn` returning a bundle via `a ?? b` (both bare bundle params) is
-therefore a distinct, still-open gap — same category of limitation as this
-sub-gap's own module-level OR-mux boundary, just one level deeper. Not
-attempted here.
+result stay bundle-typed) is still open.
+
+**Re-scoped 2026-09-16 — this is NOT a narrow Coalesce corner, it's an
+instance of a broader, pre-existing gap: bundle-typed `fn`-call RESULTS are
+entirely unlowerable in `ir::lower`, independent of `??` altogether.**
+Empirically probed (two throwaway tests, not committed — reproducible from
+the shapes below) rather than assumed from reading alone, because the first
+write of this note (2026-09-15) guessed the boundary wrong:
+
+- **Baseline probe, zero `??` involved:** `fn make_handshake(v: bit) ->
+Handshake(W: 8) { { valid: v, data: 0 } }` (a plain `BundleLit` tail, the
+  same shape `checker::widths::mod::bundle_literal_tail_return_is_shape_checked`
+  already type-checks) called from `wire req: Handshake(W: 8) =
+make_handshake(a)`. Checker accepts it; `elaborate_project` succeeds and
+  produces `design.comb["req_valid"] = Field{base: FnCall{make_handshake,
+[a]}, field: "valid"}` (and the matching `"req_data"` entry) — an
+  UNRESOLVED `Field`-on-`FnCall` node, because `bundle_field_expr`
+  (`bundle.rs:47-114`) only special-cases `Coalesce`/`BundleLit`/`Ident`;
+  anything else (including a bundle-returning `FnCall`) falls to its
+  generic "keep the shape" fallback, and `Rw::field`'s own fallback
+  (`rewrite.rs:385-392`) does the same — neither inlines the callee. This
+  `Field` node then hits `ir::lower`'s existing generic catch-all
+  (`lower.rs`, "expression form not yet lowered... field access") and
+  panics — with NO `Coalesce` anywhere in the program.
+- **The OR-mux probe** (`fn combine(a: Handshake(W: 8), b: Handshake(W: 8))
+-> Handshake(W: 8) { a ?? b }`, called from a bundle-typed wire the same
+  way) panics at the EXACT SAME `Field`-on-`FnCall` site, for the exact
+  same reason — the call-site field access on `combine(...)`'s result
+  fails before `ir::lower` ever gets far enough to inline `combine`'s own
+  body and reach the `Coalesce`-turned-`IfExpr` tail at all.
+
+So "the OR-mux form for a bundle-typed fn TAIL" was the wrong frame: it's
+unreachable not because `flatten_bundle_refs_expr` lacks an OR-mux case
+(true, but moot), but because NO bundle-returning `fn` call — `??`-based or
+not — survives past its own call site's field access today.
+`flatten_bundle_params_in_func` only ever flattens PARAMS (confirmed by
+reading it, `bundle.rs:127-173`); nothing analogous exists for a `fn`'s
+`ret`/tail, and nothing in `ir::lower` inlines a callee to answer "just
+give me field `f` of what this call returns" the way it already does for
+a plain scalar call (`ExprKind::FnCall`'s existing continuation-splicing
+arm, `lower.rs:569-632`, always produces ONE flat `Bits` for the WHOLE
+call, with no per-field slicing capability).
+
+Closing this needs either (a) an elaboration-time inlining step that lets
+`bundle_field_expr` recurse into a bundle-returning `FnCall`'s (param-
+substituted) callee tail the same way it already recurses into `Coalesce`/
+`BundleLit`, or (b) teaching `ir::lower` a genuine `ExprKind::Field`
+handler that can inline the callee and slice out one field's `Bits` from
+the result. Either is a real design decision (which layer owns bundle-
+typed-fn-call inlining, and whether it composes with the existing scalar
+`FnCall` continuation-splicing or replaces it for the bundle case) — same
+weight class and same Decision-block gate as the two 2026-09-10 IR
+Decisions (signed `Bits`, loop unrolling), not a fix-in-place residual.
+**Not attempted here** — filed as its own, broader, still-open item;
+the `??`-specific framing this entry used from 2026-09-08 through
+2026-09-15 is retired in favor of this one.
 
 New test (`crates/mimz-core/src/ir/tests/lower_binops.rs`):
 `bare_bundle_typed_fn_param_coalesce_unwrap_is_eliminated` — runs the real
