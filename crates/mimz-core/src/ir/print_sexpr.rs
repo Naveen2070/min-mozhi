@@ -14,13 +14,13 @@ use std::fmt::Write;
 /// read as terse, bare net references, so the positive case renders
 /// differently even though the detection is shared.
 fn format_pin(module: &Module, bits: &Bits) -> String {
-    if bits.0.is_empty() {
+    if bits.nets.is_empty() {
         return "{}".to_string();
     }
     match contiguous_same_name(module, bits) {
         Some(name) => name,
         None => {
-            let ids: Vec<String> = bits.0.iter().map(|n| n.0.to_string()).collect();
+            let ids: Vec<String> = bits.nets.iter().map(|n| n.0.to_string()).collect();
             format!("{{{}}}", ids.join(","))
         }
     }

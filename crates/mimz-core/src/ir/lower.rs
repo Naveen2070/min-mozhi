@@ -336,8 +336,30 @@ impl<'a> LowerCtx<'a> {
                 self.lower_const(module, &const_val, e.span)
             }
             ExprKind::Binary { op, lhs, rhs } => {
-                let mut a = self.lower_expr(module, lhs, locals, arrays);
-                let mut b = self.lower_expr(module, rhs, locals, arrays);
+                // A `Mul` literal operand sizes to the OTHER operand's
+                // declared width before the multiply, not its own natural
+                // width — mirrors the const-shift-amount fix's own
+                // call-site-level approach (GAP-1 Task 6, Step 5).
+                // `requires_matched_ab` deliberately excludes `Mul` (real
+                // inputs may legitimately differ in width, lossless growth),
+                // so this needs its own case rather than falling through to
+                // the literal-resize block below, which never fires for it.
+                let (mut a, mut b) = match (*op, &lhs.kind, &rhs.kind) {
+                    (BinOp::Mul, ExprKind::Int { .. }, _) => {
+                        let b = self.lower_expr(module, rhs, locals, arrays);
+                        let a = self.lower_expr_sized(module, lhs, locals, arrays, b.width());
+                        (a, b)
+                    }
+                    (BinOp::Mul, _, ExprKind::Int { .. }) => {
+                        let a = self.lower_expr(module, lhs, locals, arrays);
+                        let b = self.lower_expr_sized(module, rhs, locals, arrays, a.width());
+                        (a, b)
+                    }
+                    _ => (
+                        self.lower_expr(module, lhs, locals, arrays),
+                        self.lower_expr(module, rhs, locals, arrays),
+                    ),
+                };
                 // A width mismatch here can only be a compile-time-constant
                 // expression (a bare literal, a const/param identifier, or a
                 // larger constant expression built from those — see
@@ -360,36 +382,65 @@ impl<'a> LowerCtx<'a> {
                 if requires_matched_ab(*op) && a.width() != b.width() {
                     if self.is_const_foldable(lhs, locals) {
                         a = self.lower_expr_sized(module, lhs, locals, arrays, b.width());
+                        // An ordering comparison's untyped literal operand
+                        // inherits its sibling's SIGNEDNESS the same way the
+                        // checker's `Ty::CtInt` does (`matched_ty`) —
+                        // `lower_expr_sized`'s own literal arms always build
+                        // an unsigned `ConstVal`, so without this a resized
+                        // literal would force every such comparison unsigned
+                        // regardless of its true sibling's declared type.
+                        if matches!(op, BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge) {
+                            a.signed = b.signed;
+                        }
                     } else if self.is_const_foldable(rhs, locals) {
                         b = self.lower_expr_sized(module, rhs, locals, arrays, a.width());
+                        if matches!(op, BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge) {
+                            b.signed = a.signed;
+                        }
                     }
                 }
                 let shl_const_amount = (*op == BinOp::Shl)
                     .then(|| crate::value::const_eval(rhs, &self.design.consts).ok())
                     .flatten()
                     .and_then(|v| u128::try_from(v).ok());
-                // Signedness of an ORDERING comparison has to come from the
-                // source `Expr`s — `Bits` carries no sign bit — so it is
-                // computed here, at the one call site that still has them,
-                // and gated on the op the same way `shl_const_amount` is
-                // above (otherwise every node of an expression tree walks its
-                // own subtree, making lowering quadratic for no benefit).
+                // Signedness of an ORDERING comparison now reads straight off
+                // `a`/`b`'s own `Bits::signed` (computed once at construction,
+                // per `ir::Bits`'s own doc) instead of re-deriving it from the
+                // source `Expr` shapes — the two heuristic functions that used
+                // to do that (`expr_is_definitely_signed`/
+                // `unshadowed_signal_signed`) are gone (GAP-1 Task 6).
                 let cmp_signed = matches!(op, BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge)
-                    && (self.expr_is_definitely_signed(lhs, locals)
-                        || self.expr_is_definitely_signed(rhs, locals));
+                    && a.signed
+                    && b.signed;
                 self.lower_binop(module, *op, a, b, shl_const_amount, cmp_signed, e.span)
             }
             ExprKind::Unary { op, expr } => {
                 let a = self.lower_expr(module, expr, locals, arrays);
                 let (kind, out_width) = match op {
-                    UnOp::Neg => (CellKind::Neg, a.width()),
+                    // `-x` grows by one bit when `x` is signed — the same
+                    // "room for the MIN-value carry bit" rule `Abs` needs —
+                    // matching `checker::widths::ops`'s `Signed(n) ->
+                    // Signed(n+1)` growth exactly (previously a known width
+                    // divergence, see docs/audit/gaps.md GAP-1).
+                    UnOp::Neg => {
+                        let out_w = if a.signed { a.width() + 1 } else { a.width() };
+                        (CellKind::Neg, out_w)
+                    }
                     UnOp::BitNot => (CellKind::Not, a.width()),
                     UnOp::LogicNot => (CellKind::LogicNot, 1),
                     UnOp::RedAnd => (CellKind::RedAnd, 1),
                     UnOp::RedOr => (CellKind::RedOr, 1),
                     UnOp::RedXor => (CellKind::RedXor, 1),
                 };
-                self.push_unary_cell(module, kind, a, out_width, e.span)
+                // Negating a signed value stays signed; every other unary op
+                // here produces an unsigned result (bitwise/reduction ops
+                // aren't sign-meaningful).
+                let signed = matches!(op, UnOp::Neg) && a.signed;
+                let out = self.push_unary_cell(module, kind, a, out_width, e.span);
+                Bits {
+                    nets: out.nets,
+                    signed,
+                }
             }
             // `{a, b}` is Verilog-style: the first (source-order) part is
             // the MOST-significant. `ir::Bits` is index-0-is-LSB, so the
@@ -399,9 +450,9 @@ impl<'a> LowerCtx<'a> {
                 let mut ids = Vec::new();
                 for part in parts.iter().rev() {
                     let bits = self.lower_expr(module, part, locals, arrays);
-                    ids.extend(bits.0);
+                    ids.extend(bits.nets);
                 }
-                Bits(ids)
+                Bits::unsigned(ids)
             }
             // `base[hi:lo]`, both bounds inclusive. `hi`/`lo` always
             // const-fold (checker-enforced) — the same const_eval promoted
@@ -415,7 +466,10 @@ impl<'a> LowerCtx<'a> {
                 let lo_val = crate::value::const_eval(lo, &self.design.consts)
                     .expect("checker guarantees slice bounds const-fold")
                     as usize;
-                Bits(base_bits.0[lo_val..=hi_val].to_vec())
+                Bits {
+                    nets: base_bits.nets[lo_val..=hi_val].to_vec(),
+                    signed: base_bits.signed,
+                }
             }
             ExprKind::IfExpr { cond, then, els } => {
                 let sel = self.lower_expr(module, cond, locals, arrays);
@@ -546,7 +600,10 @@ impl<'a> LowerCtx<'a> {
                     // machinery of its own.
                     let base_bits = self.lower_expr(module, base, locals, arrays);
                     match crate::value::const_eval(index, &self.design.consts) {
-                        Ok(i) => Bits(vec![base_bits.0[i as usize]]),
+                        Ok(i) => Bits {
+                            nets: vec![base_bits.nets[i as usize]],
+                            signed: base_bits.signed,
+                        },
                         Err(_) => {
                             let idx_bits = self.lower_expr(module, index, locals, arrays);
                             let shifted = self.lower_binop(
@@ -558,7 +615,10 @@ impl<'a> LowerCtx<'a> {
                                 false,
                                 e.span,
                             );
-                            Bits(vec![shifted.0[0]])
+                            Bits {
+                                nets: vec![shifted.nets[0]],
+                                signed: shifted.signed,
+                            }
                         }
                     }
                 }
@@ -639,17 +699,27 @@ impl<'a> LowerCtx<'a> {
                     if target <= base.width() {
                         base
                     } else {
-                        if !self.arg_is_definitely_unsigned(&args[0], locals) {
-                            unimplemented!(
-                                "ir::lower cannot prove `extend`'s argument is unsigned, \
-                                 so it cannot choose between zero- and sign-extension \
-                                 (ir::Bits has no signed bit in v1); span: {:?}",
-                                args[0].span
-                            );
+                        // `base.signed` REPLACES the old
+                        // `arg_is_definitely_unsigned` heuristic entirely —
+                        // computed once at construction (GAP-1 Task 6), it's
+                        // correct no matter how `base` was produced, instead
+                        // of a best-effort proof over a handful of `Expr`
+                        // shapes.
+                        let pad_net = if base.signed {
+                            // Sign-extend: replicate the MSB, not zero.
+                            *base
+                                .nets
+                                .last()
+                                .expect("checker guarantees a non-empty operand")
+                        } else {
+                            self.lower_const(module, &const_val(0, 1), e.span).nets[0]
+                        };
+                        let pad_width = target - base.width();
+                        let pad = vec![pad_net; pad_width as usize];
+                        Bits {
+                            nets: [base.nets, pad].concat(),
+                            signed: base.signed,
                         }
-                        let pad =
-                            self.lower_const(module, &const_val(0, target - base.width()), e.span);
-                        Bits([base.0, pad.0].concat())
                     }
                 }
                 Builtin::Trunc => {
@@ -661,11 +731,33 @@ impl<'a> LowerCtx<'a> {
                         target <= base.width(),
                         "checker (E0407) guarantees trunc never widens"
                     );
-                    Bits(base.0[..(target.min(base.width())) as usize].to_vec())
+                    Bits {
+                        nets: base.nets[..(target.min(base.width())) as usize].to_vec(),
+                        signed: base.signed,
+                    }
                 }
-                Builtin::SignedCast | Builtin::UnsignedCast | Builtin::Encoding => {
-                    self.lower_expr(module, &args[0], locals, arrays)
+                // `signed(x)`/`unsigned(x)` are free reinterprets — repoint
+                // at `x`'s own `Bits`, allocating nothing — but unlike a
+                // plain pass-through they MUST flip the `signed` flag: that
+                // is the entire point of the cast (GAP-1 Task 6; `ir::Bits`
+                // used to carry no sign bit at all, so this was previously
+                // inexpressible). `encoding(e)` is not a sign cast, so it
+                // stays a pure pass-through.
+                Builtin::SignedCast => {
+                    let a = self.lower_expr(module, &args[0], locals, arrays);
+                    Bits {
+                        nets: a.nets,
+                        signed: true,
+                    }
                 }
+                Builtin::UnsignedCast => {
+                    let a = self.lower_expr(module, &args[0], locals, arrays);
+                    Bits {
+                        nets: a.nets,
+                        signed: false,
+                    }
+                }
+                Builtin::Encoding => self.lower_expr(module, &args[0], locals, arrays),
                 Builtin::Nand | Builtin::Nor | Builtin::Xnor => {
                     let a = self.lower_expr(module, &args[0], locals, arrays);
                     let reduce_kind = match func {
@@ -681,12 +773,62 @@ impl<'a> LowerCtx<'a> {
                     let reduced = self.push_unary_cell(module, reduce_kind, a, 1, e.span);
                     self.push_unary_cell(module, CellKind::LogicNot, reduced, 1, e.span)
                 }
-                Builtin::Min | Builtin::Max | Builtin::Abs => unimplemented!(
-                    "ir::lower does not lower `{func:?}` — its correctness depends on \
-                     signed interpretation, and ir::Bits has no signed bit in v1 (see \
-                     docs/audit/gaps.md GAP-1); span: {:?}",
-                    e.span
-                ),
+                Builtin::Min | Builtin::Max | Builtin::Abs => {
+                    let a = self.lower_expr(module, &args[0], locals, arrays);
+                    match func {
+                        Builtin::Abs => {
+                            // Lossless like unary `-`: `abs(MIN)` needs the
+                            // extra bit — the checker types it
+                            // `Signed(n) -> Signed(n+1)`. The checker only
+                            // accepts a `Signed` argument here, so `a.signed`
+                            // is always true in practice; the `else` branch
+                            // is defensive, mirroring `UnOp::Neg`'s formula.
+                            let neg_width = if a.signed { a.width() + 1 } else { a.width() };
+                            let neg = self.push_unary_cell(
+                                module,
+                                CellKind::Neg,
+                                a.clone(),
+                                neg_width,
+                                e.span,
+                            );
+                            // Sign bit of `a` selects between `a` and its
+                            // negation — a pure bit-select, no cell, the same
+                            // convention `ExprKind::Slice`/`Index` already use.
+                            let is_neg = Bits::unsigned(vec![
+                                *a.nets
+                                    .last()
+                                    .expect("checker guarantees a non-empty operand"),
+                            ]);
+                            let out = self.push_mux_cell(module, is_neg, neg, a, e.span);
+                            Bits {
+                                nets: out.nets,
+                                signed: false, // |x| is never negative
+                            }
+                        }
+                        Builtin::Min | Builtin::Max => {
+                            let b = self.lower_expr(module, &args[1], locals, arrays);
+                            // Checker forbids mixed signed/unsigned operands
+                            // (`matched_ty`), so `a.signed == b.signed` in
+                            // practice; `&&` is the conservative fallback.
+                            let cmp_signed = a.signed && b.signed;
+                            let a_lt_b = self.push_binary_cell(
+                                module,
+                                CellKind::Lt { signed: cmp_signed },
+                                a.clone(),
+                                b.clone(),
+                                1,
+                                e.span,
+                            );
+                            let (sel, first, second) = if matches!(func, Builtin::Min) {
+                                (a_lt_b, a, b)
+                            } else {
+                                (a_lt_b, b, a) // Max picks b when a < b
+                            };
+                            self.push_mux_cell(module, sel, first, second, e.span)
+                        }
+                        _ => unreachable!("outer match already narrowed `func` to Min|Max|Abs"),
+                    }
+                }
                 // `clog2` always const-folds before a checked Design exists
                 // (checker rejects it in a runtime value position, E0407);
                 // `sync.double_flop`/`sync.pulse` are always desugared by
@@ -716,10 +858,10 @@ impl<'a> LowerCtx<'a> {
                 for _ in 0..n {
                     for part in parts.iter().rev() {
                         let bits = self.lower_expr(module, part, locals, arrays);
-                        ids.extend(bits.0);
+                        ids.extend(bits.nets);
                     }
                 }
-                Bits(ids)
+                Bits::unsigned(ids)
             }
             other => unimplemented!(
                 "expression form not yet lowered by Task 6 (see later tasks for \
@@ -769,15 +911,21 @@ impl<'a> LowerCtx<'a> {
                 let lo = crate::value::const_eval(lo, &self.design.consts)
                     .expect("checker guarantees a slice write's lo bound const-folds")
                     as usize;
-                let mut nets = base_bits.0.clone();
-                nets[lo..=hi].clone_from_slice(&rhs.0);
-                Bits(nets)
+                let mut nets = base_bits.nets.clone();
+                nets[lo..=hi].clone_from_slice(&rhs.nets);
+                Bits {
+                    nets,
+                    signed: base_bits.signed,
+                }
             }
             None => match crate::value::const_eval(first, &self.design.consts) {
                 Ok(i) => {
-                    let mut nets = base_bits.0.clone();
-                    nets[i as usize] = rhs.0[0];
-                    Bits(nets)
+                    let mut nets = base_bits.nets.clone();
+                    nets[i as usize] = rhs.nets[0];
+                    Bits {
+                        nets,
+                        signed: base_bits.signed,
+                    }
                 }
                 Err(_) => {
                     let idx_bits = self.lower_expr(module, first, None, None);
@@ -794,7 +942,7 @@ impl<'a> LowerCtx<'a> {
                             1,
                             span,
                         );
-                        let base_bit = Bits(vec![base_bits.0[i as usize]]);
+                        let base_bit = Bits::unsigned(vec![base_bits.nets[i as usize]]);
                         let out = module.alloc_bits(1, None);
                         module.cells.push(Cell {
                             kind: CellKind::Mux,
@@ -808,9 +956,12 @@ impl<'a> LowerCtx<'a> {
                             .collect(),
                             span,
                         });
-                        nets.push(out.0[0]);
+                        nets.push(out.nets[0]);
                     }
-                    Bits(nets)
+                    Bits {
+                        nets,
+                        signed: base_bits.signed,
+                    }
                 }
             },
         }
@@ -827,141 +978,6 @@ impl<'a> LowerCtx<'a> {
             .iter()
             .find(|m| m.name == *name)
             .map(|m| (m.name.clone(), m.width.bits))
-    }
-
-    /// The declared signedness of a module-level signal named `name`, or
-    /// `None` if `name` isn't an input/output/wire/register (a memory name,
-    /// or a name this function simply doesn't know — never expected for a
-    /// real `Design`, since the checker already resolved every such name).
-    fn declared_signed(&self, name: &str) -> Option<bool> {
-        self.design
-            .inputs
-            .iter()
-            .chain(&self.design.outputs)
-            .chain(&self.design.wires)
-            .find(|s| s.name == name)
-            .map(|s| s.width.signed)
-            .or_else(|| {
-                self.design
-                    .regs
-                    .iter()
-                    .find(|r| r.name == name)
-                    .map(|r| r.width.signed)
-            })
-    }
-
-    /// Best-effort proof that `e`'s value is definitely UNSIGNED, so
-    /// `extend`'s zero-fill is the correct extension for it. `ir::Bits`
-    /// carries no signed bit in v1 (`ir/exec.rs`'s own documented "unsigned
-    /// only" limitation) — this function exists so `extend` NEVER silently
-    /// zero-extends a value it cannot prove is unsigned; anything it
-    /// returns `false` for must be refused loudly by the caller, not
-    /// assumed safe. Recognizes exactly the shapes real programs use to
-    /// size a literal (`extend(1, N)`, `extend(x, N)` for a plain unsigned
-    /// signal, `extend(unsigned(x), N)`/`extend(encoding(e), N)`); anything
-    /// else — including any reference inside an inlined `fn` body, where a
-    /// param's declared signedness isn't threaded through `locals` in v1 —
-    /// is conservatively `false`. See `docs/audit/gaps.md` GAP-1.
-    fn arg_is_definitely_unsigned(&self, e: &Expr, locals: Option<&HashMap<String, Bits>>) -> bool {
-        match &e.kind {
-            ExprKind::Int { .. } | ExprKind::Bool(_) => true,
-            ExprKind::Call {
-                func: Builtin::UnsignedCast | Builtin::Encoding,
-                ..
-            } => true,
-            // Only consult `declared_signed` when `name` is NOT shadowed by
-            // a `fn` param/`let` binding — `lower_expr`'s own `Ident` arm
-            // resolves a shadowed name through `locals` first, so a
-            // module-level signal of the same name would be the WRONG
-            // thing to ask about here. Strictly more permissive than the
-            // old `locals.is_none()` guard (which refused every `Ident`
-            // inside any inlined `fn` body, even an unshadowed reference to
-            // a module signal), with no loss of soundness.
-            ExprKind::Ident(name) if locals.is_none_or(|l| !l.contains_key(name)) => {
-                self.declared_signed(name) == Some(false)
-            }
-            _ => false,
-        }
-    }
-
-    /// Best-effort proof that `e`'s value is DEFINITELY signed AND that
-    /// `lower` sizes it at exactly the width the CHECKER types it at — the
-    /// mirror image of `arg_is_definitely_unsigned` above, and the input to
-    /// `CellKind::{Lt,Le,Gt,Ge}`'s `signed` flag.
-    ///
-    /// That second half is not decoration, it is the whole soundness
-    /// argument. `lower_binop` only trusts this answer when the two operand
-    /// pins came out the SAME width, and that guard is only meaningful if a
-    /// `true` here implies "this pin's width IS the checker's type width".
-    /// Wherever `ir::lower`'s width formula and the checker's disagree, a
-    /// literal on the other side can match the LOWERED width while the
-    /// checker sized it from the (different) TYPE width, and reinterpreting
-    /// those bits as two's complement silently changes the answer. Two such
-    /// divergences exist today:
-    ///
-    /// * `UnOp::Neg` — `checker::widths::ops` grows it (`Signed(n)` ->
-    ///   `Signed(n + 1)`, gaining the carry bit) but `lower_expr`'s `Neg` arm
-    ///   keeps `a.width()`. So `-a < 200` for `a: signed[8]` has an 8-bit
-    ///   pin against a checker type of `Signed(9)`, the 8-bit literal `200`
-    ///   matches the pin width, and reading it as signed flips half the
-    ///   input domain. See `docs/audit/gaps.md`.
-    /// * `BinOp::Mul` with a literal operand — `lower_binop` sizes it
-    ///   `a.width() + b.width()` from the literal's NATURAL width, while the
-    ///   checker first adapts the literal to the sized side's type: `a * 2`
-    ///   for `a: signed[8]` is 10 bits lowered but `Signed(16)` typed.
-    ///
-    /// So this recognizes ONLY the two shapes whose lowered width is, by
-    /// construction, the declared width of a module-level signal: a bare
-    /// `Ident`, and `signed(<Ident>)` (a free reinterpret — `lower`'s
-    /// `SignedCast` arm repoints at its argument's `Bits` and allocates
-    /// nothing). Everything else is conservatively `false`, i.e. an unsigned
-    /// comparison — today's behaviour, so an unrecognized shape is never a
-    /// regression. In particular a bare literal is the checker's untyped
-    /// `Ty::CtInt`: it INHERITS the other operand's type
-    /// (`checker::widths::ops::matched_ty`) rather than deciding signedness
-    /// itself, so it answers `false` and lets the sized side decide.
-    ///
-    /// Two non-literal operands cannot disagree: `matched_ty` rejects a
-    /// genuinely mixed comparison outright (E0403 "cannot mix X and Y"), so
-    /// the caller ORs the two answers rather than reconciling them.
-    fn expr_is_definitely_signed(&self, e: &Expr, locals: Option<&HashMap<String, Bits>>) -> bool {
-        match &e.kind {
-            ExprKind::Ident(name) => self.unshadowed_signal_signed(name, locals) == Some(true),
-            // `signed(x)` over a bare identifier. The cast is free — `lower`'s
-            // `SignedCast` arm repoints at `x`'s `Bits` and allocates nothing
-            // — so the pin keeps `x`'s DECLARED width whatever `x`'s own
-            // declared signedness was, which is the point: `signed(a) <
-            // signed(b)` over two UNSIGNED-declared signals is GAP-1's
-            // headline case. Hence `.is_some()`, not `== Some(true)`.
-            ExprKind::Call {
-                func: Builtin::SignedCast,
-                args,
-            } => match args.first().map(|a| &a.kind) {
-                Some(ExprKind::Ident(name)) => {
-                    self.unshadowed_signal_signed(name, locals).is_some()
-                }
-                _ => false,
-            },
-            _ => false,
-        }
-    }
-
-    /// The declared signedness of `name`, but ONLY when `name` really is a
-    /// module-level signal and is not shadowed by a `fn` param/`let` binding
-    /// — `lower_expr`'s own `Ident` arm resolves a shadowed name through
-    /// `locals` first, so a module-level signal of the same name would be the
-    /// wrong thing to ask about (the same guard `arg_is_definitely_unsigned`
-    /// uses). `None` therefore means "no declared width to reason about",
-    /// which is exactly what `expr_is_definitely_signed`'s callers need.
-    fn unshadowed_signal_signed(
-        &self,
-        name: &str,
-        locals: Option<&HashMap<String, Bits>>,
-    ) -> Option<bool> {
-        locals
-            .is_none_or(|l| !l.contains_key(name))
-            .then(|| self.declared_signed(name))
-            .flatten()
     }
 
     /// Walks one `fn` body's statement list, evaluating against `locals`
@@ -1001,22 +1017,9 @@ impl<'a> LowerCtx<'a> {
                 let else_val =
                     self.lower_fn_stmts(module, &els_full, tail, locals, arrays, target_width);
                 // Both branches are now already sized to target_width by the
-                // Return/tail arms above — out_width no longer needs
-                // max(then, else); it IS target_width, by construction.
-                let out = module.alloc_bits(target_width, None);
-                module.cells.push(Cell {
-                    kind: CellKind::Mux,
-                    pins: [
-                        ("sel", sel),
-                        ("a", then_val),
-                        ("b", else_val),
-                        ("out", out.clone()),
-                    ]
-                    .into_iter()
-                    .collect(),
-                    span: cond.span,
-                });
-                out
+                // Return/tail arms above, so `push_mux_cell`'s own
+                // max(then, else) formula lands on target_width too.
+                self.push_mux_cell(module, sel, then_val, else_val, cond.span)
             }
             Some((FnStmt::Loop { span, .. }, _)) | Some((FnStmt::ForEach { span, .. }, _)) => {
                 unimplemented!(
@@ -1385,6 +1388,36 @@ impl<'a> LowerCtx<'a> {
         out
     }
 
+    /// Shared `sel ? a : b` cell constructor — used by `FnStmt::If`, the
+    /// register reset mux, and `Min`/`Max`/`Abs`'s own `Mux`, so this literal
+    /// isn't written out a fourth time. `out`'s width is
+    /// `a.width().max(b.width())`, matching every existing inline `Mux`
+    /// builder in this file; its `signed` is `a.signed && b.signed` — the
+    /// checker requires both arms of a real mux to agree on kind, so this is
+    /// exact whenever that holds, and conservatively `false` otherwise. A
+    /// caller that knows better (`Abs`'s "the result is never negative"
+    /// case) overrides the returned `Bits` afterward.
+    fn push_mux_cell(
+        &mut self,
+        module: &mut Module,
+        sel: Bits,
+        a: Bits,
+        b: Bits,
+        span: crate::span::Span,
+    ) -> Bits {
+        let out_width = a.width().max(b.width());
+        let mut out = module.alloc_bits(out_width, None);
+        out.signed = a.signed && b.signed;
+        module.cells.push(Cell {
+            kind: CellKind::Mux,
+            pins: [("sel", sel), ("a", a), ("b", b), ("out", out.clone())]
+                .into_iter()
+                .collect(),
+            span,
+        });
+        out
+    }
+
     /// Walks one `on`-block body, folding last-write-wins per-target
     /// assignment through `if`/`else`, mirroring
     /// `emit_verilog::module::seq::seq_stmts`'s two-pass structure
@@ -1549,7 +1582,15 @@ pub fn lower(design: &Design) -> Module {
     };
 
     for input in &design.inputs {
-        let bits = module.alloc_bits(input.width.bits, Some(&input.name));
+        // A signed-declared input's `Bits` must carry `signed: true` from the
+        // moment it's allocated — everything downstream (`Neg`, `extend`,
+        // `min`/`max`/`abs`, comparison signedness) reads this flag straight
+        // off the `Bits`, never re-deriving it from the source `Expr` (GAP-1
+        // Task 6). Nothing else re-populates this for a plain input, since a
+        // bare `Ident` resolves straight to this cached `Bits` with no
+        // further lowering (`LowerCtx::resolve`).
+        let mut bits = module.alloc_bits(input.width.bits, Some(&input.name));
+        bits.signed = input.width.signed;
         ctx.resolved.insert(input.name.clone(), bits.clone());
         module.ports.push((input.name.clone(), bits, Dir::In));
     }
@@ -1576,7 +1617,8 @@ pub fn lower(design: &Design) -> Module {
     // Registers must exist in `ctx.resolved` before any comb expression that
     // reads a register's current value is lowered.
     for reg in &design.regs {
-        let q_bits = module.alloc_bits(reg.width.bits, Some(&reg.name));
+        let mut q_bits = module.alloc_bits(reg.width.bits, Some(&reg.name));
+        q_bits.signed = reg.width.signed;
         ctx.resolved.insert(reg.name.clone(), q_bits);
     }
     // Extern-instance outputs (`design.unknown_signals`) are driverless by
@@ -1591,9 +1633,9 @@ pub fn lower(design: &Design) -> Module {
             .iter()
             .find(|w| w.name == *name)
             .unwrap_or_else(|| panic!("unknown_signals entry `{name}` has no matching wire"))
-            .width
-            .bits;
-        let bits = module.alloc_bits(width, Some(name));
+            .width;
+        let mut bits = module.alloc_bits(width.bits, Some(name));
+        bits.signed = width.signed;
         ctx.resolved.insert(name.clone(), bits);
     }
     for output in &design.outputs {
@@ -1612,7 +1654,7 @@ pub fn lower(design: &Design) -> Module {
     // of `out={16,17,18,19,20,21,22,23,24}`).
     for wire in &design.wires {
         let bits = ctx.resolve(&mut module, &wire.name);
-        for net_id in &bits.0 {
+        for net_id in &bits.nets {
             if module.nets[net_id.0 as usize].name.is_none() {
                 module.nets[net_id.0 as usize].name = Some(wire.name.clone());
             }
@@ -1687,27 +1729,20 @@ pub fn lower(design: &Design) -> Module {
             let reset_sel = ctx.resolve(&mut module, reset_name);
             let reset_const =
                 ctx.lower_const(&mut module, &reg.reset, crate::span::Span::default());
-            let out = module.alloc_bits(reg.width.bits, None);
-            module.cells.push(Cell {
-                kind: CellKind::Mux,
-                pins: [
-                    ("sel", reset_sel),
-                    ("a", reset_const),
-                    ("b", d_bits),
-                    ("out", out.clone()),
-                ]
-                .into_iter()
-                .collect(),
-                span: crate::span::Span::default(),
-            });
-            d_bits = out;
+            d_bits = ctx.push_mux_cell(
+                &mut module,
+                reset_sel,
+                reset_const,
+                d_bits,
+                crate::span::Span::default(),
+            );
         }
 
         let clock_bits = ctx.resolve(&mut module, &reg.clock);
         assert_eq!(clock_bits.width(), 1, "a clock signal is always 1 bit");
         module.cells.push(Cell {
             kind: CellKind::Dff {
-                clock: clock_bits.0[0],
+                clock: clock_bits.nets[0],
                 edge: reg.edge,
             },
             pins: [("d", d_bits), ("q", q_bits)].into_iter().collect(),
