@@ -37,9 +37,9 @@ fn lowers_a_single_input_port_to_named_nets() {
     assert_eq!(module.ports.len(), 1);
     let (name, bits, dir) = &module.ports[0];
     assert_eq!(name, "a");
-    assert_eq!(bits.0.len(), 8);
+    assert_eq!(bits.nets.len(), 8);
     assert_eq!(*dir, crate::ast::Dir::In);
-    for (i, net_id) in bits.0.iter().enumerate() {
+    for (i, net_id) in bits.nets.iter().enumerate() {
         assert_eq!(module.nets[net_id.0 as usize].name.as_deref(), Some("a"));
         let _ = i;
     }

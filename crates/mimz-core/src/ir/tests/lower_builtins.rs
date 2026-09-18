@@ -64,11 +64,16 @@ fn extend_grows_an_unsigned_input_by_padding_with_a_zero_constant() {
     assert_eq!(y_bits.width(), 16);
     // Low 8 bits are `a`'s own nets (same nets, not copies) ...
     let (_, a_bits, _) = module.ports.iter().find(|(n, ..)| n == "a").unwrap();
-    assert_eq!(&y_bits.0[..8], &a_bits.0[..]);
+    assert_eq!(&y_bits.nets[..8], &a_bits.nets[..]);
     // ... and the high 8 bits are driven by a REAL Const cell — not just
     // "validate() found nothing wrong" (validate's driven-set seeding is
     // direction-blind for ports and has no width formula for Const, so the
     // old validate-only assertion didn't actually prove this).
+    //
+    // UPDATED by GAP-1 Task 6: the zero-pad is now a single 1-bit Const
+    // cell whose net is REPLICATED across every pad position (uniform with
+    // the sign-extend branch's MSB-replication), not one N-bit Const cell —
+    // see `Builtin::Extend`'s doc.
     let const_cells: Vec<_> = module
         .cells
         .iter()
@@ -79,10 +84,11 @@ fn extend_grows_an_unsigned_input_by_padding_with_a_zero_constant() {
         1,
         "extend's zero-pad must be a real Const cell, not left dangling"
     );
-    assert_eq!(
-        const_cells[0].pins["out"].0,
-        y_bits.0[8..].to_vec(),
-        "the Const cell must drive exactly y's high 8 bits"
+    assert_eq!(const_cells[0].pins["out"].width(), 1);
+    let pad_net = const_cells[0].pins["out"].nets[0];
+    assert!(
+        y_bits.nets[8..].iter().all(|&n| n == pad_net),
+        "the Const cell's single net must drive every one of y's high 8 bits"
     );
     let errors = crate::ir::validate::validate(&module);
     assert_eq!(errors, Vec::new());
@@ -97,19 +103,15 @@ fn extend_to_the_same_width_is_a_no_op() {
     assert_eq!(y_bits, a_bits);
 }
 
-/// A value `arg_is_definitely_unsigned` cannot clear must be REFUSED, never
-/// silently zero-extended. The argument here is a signed 8-bit input.
-///
-/// The plan's original draft of this test wrapped `a` in `signed(a)`, but
-/// that shape was unreachable in Task 1: `Extend` lowers its argument
-/// before it consults the guard, and `Builtin::SignedCast` had no lowering
-/// until Task 2 — so it tripped the "builtin not yet lowered" catch-all
-/// instead. A signed *signal* exercises the same guard on the same path.
-/// See `extend_of_signed_cast_panics_loudly` below for the originally-drafted
-/// `signed(a)` variant, now that `SignedCast` lowers.
+/// UPDATED by GAP-1 Task 6: `extend` of a genuinely signed value used to be
+/// REFUSED loudly (`arg_is_definitely_unsigned` couldn't clear it, and
+/// `ir::Bits` had no signed bit to decide zero- vs sign-extension with). Now
+/// `ir::Bits::signed` answers this directly and `extend` sign-extends for
+/// real: replicate the MSB, not zero. The argument here is a signed 8-bit
+/// input, `a = 0xFF` (i.e. `-1`), so a correct sign-extend produces `0xFFFF`
+/// (all-ones), while an (incorrect) zero-extend would produce `0x00FF`.
 #[test]
-#[should_panic(expected = "cannot prove")]
-fn extend_of_a_signed_value_panics_loudly_instead_of_silently_zero_extending() {
+fn extend_of_a_signed_value_sign_extends_instead_of_zero_extending() {
     let mut comb = BTreeMap::new();
     comb.insert(
         "y".to_string(),
@@ -157,25 +159,27 @@ fn extend_of_a_signed_value_panics_loudly_instead_of_silently_zero_extending() {
         asserts: vec![],
         covers: vec![],
     };
-    lower(&design);
+    let module = lower(&design);
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("a", crate::value::Val::new(0xFF, 8, false));
+    ex.tick();
+    assert_eq!(
+        ex.get_output("y").bits,
+        crate::bits::Bits::Small(0xFFFF),
+        "extend must sign-extend a: signed[8] = -1 to y: bits[16] = 0xFFFF, \
+         not zero-extend it to 0x00FF"
+    );
 }
 
-/// The originally-drafted `signed(a)` variant of the test above — now
-/// reachable since Task 2 lowers `Builtin::SignedCast` as an identity cast.
-/// `extend(signed(a), 16)` must refuse just as loudly as a directly-signed
-/// input. The mechanism is refusal by FALL-THROUGH, not by inspection:
-/// `ExprKind::Call { func: SignedCast, .. }` matches no true-returning arm
-/// in `arg_is_definitely_unsigned` (only `UnsignedCast`/`Encoding` do), so
-/// it drops to the final `_ => false` catch-all and is refused immediately —
-/// the inner `Ident("a")` is never reached at all. That matters: `a` here is
-/// declared UNSIGNED, so an `arg_is_definitely_unsigned` that did "see
-/// through" the cast to its argument would return `true` and silently
-/// zero-extend a value the program explicitly asked to read as signed. If a
-/// future change ever adds a `SignedCast` arm, this test is what must keep
-/// failing.
+/// The `signed(a)` variant of the test above — `a` is declared UNSIGNED, so
+/// the OLD heuristic (`arg_is_definitely_unsigned`) would have "seen
+/// through" a bare `Ident` and (wrongly) zero-extended it; the cast makes it
+/// definitely signed, and `Builtin::SignedCast` now marks `Bits::signed`
+/// directly (GAP-1 Task 6) rather than relying on shape-recognition.
+/// `extend(signed(a), 16)` must sign-extend just like a directly-signed
+/// input above.
 #[test]
-#[should_panic(expected = "cannot prove")]
-fn extend_of_signed_cast_panics_loudly() {
+fn extend_of_signed_cast_sign_extends() {
     let mut comb = BTreeMap::new();
     comb.insert(
         "y".to_string(),
@@ -226,7 +230,15 @@ fn extend_of_signed_cast_panics_loudly() {
         asserts: vec![],
         covers: vec![],
     };
-    lower(&design);
+    let module = lower(&design);
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("a", crate::value::Val::new(0xFF, 8, false));
+    ex.tick();
+    assert_eq!(
+        ex.get_output("y").bits,
+        crate::bits::Bits::Small(0xFFFF),
+        "signed(a) = -1 extended to 16 bits must sign-extend to 0xFFFF"
+    );
 }
 
 #[test]
@@ -279,7 +291,7 @@ fn trunc_slices_the_low_bits() {
     let (_, y_bits, _) = module.ports.iter().find(|(n, ..)| n == "y").unwrap();
     let (_, a_bits, _) = module.ports.iter().find(|(n, ..)| n == "a").unwrap();
     assert_eq!(y_bits.width(), 4);
-    assert_eq!(&y_bits.0[..], &a_bits.0[..4]);
+    assert_eq!(&y_bits.nets[..], &a_bits.nets[..4]);
 }
 
 #[test]
@@ -322,7 +334,17 @@ fn signed_cast_is_a_pure_identity_no_new_cell() {
     let module = lower(&design);
     let (_, y_bits, _) = module.ports.iter().find(|(n, ..)| n == "y").unwrap();
     let (_, a_bits, _) = module.ports.iter().find(|(n, ..)| n == "a").unwrap();
-    assert_eq!(y_bits, a_bits);
+    // UPDATED by GAP-1 Task 6: `signed(x)` still repoints at `x`'s own nets
+    // (allocates nothing, zero cells) — but it is no longer a byte-for-byte
+    // identity on `Bits` itself, since flipping `signed` to `true` is the
+    // ENTIRE point of the cast (previously inexpressible: `ir::Bits` had no
+    // sign bit at all).
+    assert_eq!(
+        y_bits.nets, a_bits.nets,
+        "same underlying nets, no new cell"
+    );
+    assert!(y_bits.signed, "signed(x) must mark its result as signed");
+    assert!(!a_bits.signed, "`a` itself stays declared unsigned");
     assert_eq!(module.cells.len(), 0, "a pure cast must emit zero cells");
 }
 
@@ -416,16 +438,25 @@ fn two_arg_design(func: Builtin) -> Design {
         inputs: vec![
             Signal {
                 name: "a".into(),
-                width: w(8),
+                width: Width {
+                    bits: 8,
+                    signed: true,
+                },
             },
             Signal {
                 name: "b".into(),
-                width: w(8),
+                width: Width {
+                    bits: 8,
+                    signed: true,
+                },
             },
         ],
         outputs: vec![Signal {
             name: "y".into(),
-            width: w(8),
+            width: Width {
+                bits: 8,
+                signed: true,
+            },
         }],
         wires: vec![],
         regs: vec![],
@@ -442,22 +473,118 @@ fn two_arg_design(func: Builtin) -> Design {
     }
 }
 
+/// UPDATED by GAP-1 Task 6: `min`/`max` now lower for real, as `Lt` + `Mux`
+/// over the checker-guaranteed-matched (here: both signed) operands. `a =
+/// -5` (0xFB, signed[8]), `b = 3`: `min` must pick `a` (the smaller value
+/// under a SIGNED reading — an unsigned comparison would read `a` as 251
+/// and wrongly pick `b`).
 #[test]
-#[should_panic(expected = "does not lower")]
-fn min_is_refused_loudly() {
-    lower(&two_arg_design(Builtin::Min));
+fn min_lowers_and_picks_the_smaller_signed_operand() {
+    let module = lower(&two_arg_design(Builtin::Min));
+    assert!(
+        module
+            .cells
+            .iter()
+            .any(|c| matches!(c.kind, crate::ir::CellKind::Lt { signed: true })),
+        "min over two signed operands must use a SIGNED Lt cell"
+    );
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("a", crate::value::Val::new(0xFB, 8, true)); // -5
+    ex.set_input("b", crate::value::Val::new(3, 8, true));
+    ex.tick();
+    assert_eq!(
+        ex.get_output("y").bits,
+        crate::bits::Bits::Small(0xFB),
+        "min(-5, 3) must be -5, not 3 (which an unsigned reading would wrongly pick)"
+    );
 }
 
+/// The `max` mirror of the test above: `max(-5, 3)` must be `3`.
 #[test]
-#[should_panic(expected = "does not lower")]
-fn max_is_refused_loudly() {
-    lower(&two_arg_design(Builtin::Max));
+fn max_lowers_and_picks_the_larger_signed_operand() {
+    let module = lower(&two_arg_design(Builtin::Max));
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("a", crate::value::Val::new(0xFB, 8, true)); // -5
+    ex.set_input("b", crate::value::Val::new(3, 8, true));
+    ex.tick();
+    assert_eq!(
+        ex.get_output("y").bits,
+        crate::bits::Bits::Small(3),
+        "max(-5, 3) must be 3"
+    );
 }
 
+fn signed_abs_design() -> Design {
+    let mut comb = BTreeMap::new();
+    comb.insert(
+        "y".to_string(),
+        Expr {
+            kind: ExprKind::Call {
+                func: Builtin::Abs,
+                args: vec![ident("a")],
+            },
+            span: Span::default(),
+        },
+    );
+    Design {
+        module: "abs_mod".to_string(),
+        consts: BTreeMap::new(),
+        inputs: vec![Signal {
+            name: "a".into(),
+            width: Width {
+                bits: 8,
+                signed: true,
+            },
+        }],
+        outputs: vec![Signal {
+            name: "y".into(),
+            width: w(9),
+        }],
+        wires: vec![],
+        regs: vec![],
+        mems: vec![],
+        comb,
+        procs: vec![],
+        clocks: vec![],
+        resets: vec![],
+        funcs: Default::default(),
+        unknown_signals: Default::default(),
+        extern_instances: vec![],
+        asserts: vec![],
+        covers: vec![],
+    }
+}
+
+/// UPDATED by GAP-1 Task 6: `abs` now lowers for real, as `Neg` + `Mux`
+/// selected on `a`'s own sign bit. `abs(-128)` (`signed[8]`'s MIN value)
+/// is the case that needs the extra growth bit: `128` does not fit back
+/// into 8 bits.
 #[test]
-#[should_panic(expected = "does not lower")]
-fn abs_is_refused_loudly() {
-    lower(&reduction_design(Builtin::Abs));
+fn abs_lowers_and_negates_only_when_the_operand_is_negative() {
+    let module = lower(&signed_abs_design());
+    let (_, y_bits, _) = module.ports.iter().find(|(n, ..)| n == "y").unwrap();
+    assert_eq!(
+        y_bits.width(),
+        9,
+        "abs(Signed(8)) grows to 9 bits, like abs(MIN)"
+    );
+
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("a", crate::value::Val::new(5, 8, true));
+    ex.tick();
+    assert_eq!(
+        ex.get_output("y").bits,
+        crate::bits::Bits::Small(5),
+        "abs(5) must be 5 (no negation needed)"
+    );
+
+    ex.set_input("a", crate::value::Val::new(0x80, 8, true)); // -128, signed[8] MIN
+    ex.tick();
+    assert_eq!(
+        ex.get_output("y").bits,
+        crate::bits::Bits::Small(128),
+        "abs(-128) must be 128, which needs the extra growth bit"
+    );
 }
 
 /// `a = 0b0000_0001` (exactly one bit set) is chosen specifically because

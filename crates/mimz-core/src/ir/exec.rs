@@ -204,7 +204,23 @@ impl<'a> Executor<'a> {
             CellKind::LogicOr => self.binop(cell, BinOp::LogicOr),
 
             CellKind::Not => self.unop(cell, UnOp::BitNot),
-            CellKind::Neg => self.unop(cell, UnOp::Neg),
+            // The checker only ever types `-x` over a `Signed` `x`
+            // (`negating_bits_is_e0407`), so `Neg`'s operand is ALWAYS
+            // signed — unlike `Lt`/`Le`/`Gt`/`Ge`, `CellKind::Neg` carries
+            // no per-cell `signed` flag to read, because it needs none:
+            // this is unconditional, not data-dependent. `get_bits` always
+            // reconstructs an unsigned `Val` (`ir::Bits` itself carries no
+            // sign bit at exec time), so without this, negating a genuinely
+            // negative operand reads it as its positive raw magnitude
+            // instead — wrong by construction, not just imprecise (GAP-1
+            // Task 6; caught by `abs`'s growth-bit regression, which
+            // composes this exact cell).
+            CellKind::Neg => {
+                let mut a = self.get_bits(&cell.pins["a"]);
+                a.signed = true;
+                let v = crate::value::unary(UnOp::Neg, a);
+                self.set_bits(&cell.pins["out"], &v);
+            }
             CellKind::LogicNot => self.unop(cell, UnOp::LogicNot),
             CellKind::RedAnd => self.unop(cell, UnOp::RedAnd),
             CellKind::RedOr => self.unop(cell, UnOp::RedOr),
@@ -232,13 +248,13 @@ impl<'a> Executor<'a> {
                     .pins
                     .iter()
                     .filter(|(name, _)| **name != "out")
-                    .flat_map(|(_, bits)| bits.0.iter().copied())
+                    .flat_map(|(_, bits)| bits.nets.iter().copied())
                     .collect();
-                let v = self.get_bits(&Bits(nets));
+                let v = self.get_bits(&Bits::unsigned(nets));
                 self.set_bits(&cell.pins["out"], &v);
             }
             CellKind::Slice { lo, hi } => {
-                let sub = Bits(cell.pins["a"].0[*lo as usize..=*hi as usize].to_vec());
+                let sub = Bits::unsigned(cell.pins["a"].nets[*lo as usize..=*hi as usize].to_vec());
                 let v = self.get_bits(&sub);
                 self.set_bits(&cell.pins["out"], &v);
             }
@@ -319,12 +335,12 @@ impl<'a> Executor<'a> {
     fn set_bits(&mut self, bits: &Bits, value: &Val) {
         narrow_only(bits.width());
         if value.unknown {
-            for net in &bits.0 {
+            for net in &bits.nets {
                 self.values.remove(net);
             }
             return;
         }
-        for (i, &net) in bits.0.iter().enumerate() {
+        for (i, &net) in bits.nets.iter().enumerate() {
             self.values
                 .insert(net, Val::new(bit_of(value, i as u32), 1, false));
         }
@@ -338,7 +354,7 @@ impl<'a> Executor<'a> {
         let width = bits.width();
         narrow_only(width);
         let mut acc: u128 = 0;
-        for (i, &net) in bits.0.iter().enumerate() {
+        for (i, &net) in bits.nets.iter().enumerate() {
             match self.values.get(&net) {
                 Some(v) => acc |= v.lsb() << i,
                 None => return Val::unknown(width, false),

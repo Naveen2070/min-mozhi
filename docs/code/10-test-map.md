@@ -22,9 +22,25 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1440 tests** as of 2026-09-15 (`cargo test --workspace`; the count is
+**1442 tests** as of 2026-09-18 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
-+3 from `crates/mimz-core/src/ir/tests/lower_bitselect_write.rs` (2026-09-10
++2 from `crates/mimz-core/src/ir/tests/lower_binops.rs` (2026-09-10
+IR-base-gap-closure plan, Task 6) —
+`neg_on_a_signed_operand_grows_by_one_bit_matching_the_checker` and
+`mul_by_a_literal_sizes_the_literal_to_the_other_operands_width_not_its_own`,
+pinning the task's two named width divergences: `UnOp::Neg`'s `out` pin now
+grows by one bit when its operand is signed (matching `checker::widths::
+ops`'s `Signed(n) -> Signed(n+1)`), and a `Mul` literal operand now sizes to
+the OTHER operand's declared width before the multiply instead of its own
+natural width. The same round also gives `ir::Bits` a per-value `signed`
+field and lowers `min`/`max`/`abs` and `extend`'s sign-dependent branch for
+real (previously refused loudly) — those land as REWRITES of pre-existing
+tests in `lower_builtins.rs`/`lower_binops.rs` (net test count unchanged: a
+`should_panic` regression test becomes a real value-level assertion, e.g.
+`min_is_refused_loudly` -> `min_lowers_and_picks_the_smaller_signed_operand`)
+rather than new test functions, so they don't add to this count; see GAP-1's
+"ir::Bits has no signed bit in v1" in `docs/audit/gaps.md`; +3 from
+`crates/mimz-core/src/ir/tests/lower_bitselect_write.rs` (2026-09-10
 IR-base-gap-closure plan, Task 4) —
 `lowers_constant_bit_select_write_as_a_masked_merge`,
 `lowers_runtime_bit_select_write_via_eq_mux_chain`, and
