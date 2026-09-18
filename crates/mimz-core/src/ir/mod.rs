@@ -20,14 +20,31 @@ use std::collections::BTreeMap;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NetId(pub u32);
 
-/// An ordered bit-vector — one pin's connection. Index 0 is the LSB, by
-/// convention shared with `mimz_core::bits`.
+/// An ordered bit-vector — one pin's connection, plus whether this value is
+/// interpreted as two's-complement. Index 0 is the LSB, by convention shared
+/// with `mimz_core::bits`. `signed` is computed once at construction (a cast,
+/// a binary op's result, a sized literal) from the SAME rule
+/// `checker::widths::Ty::Signed`/`Ty::Bits` already uses — never re-derived
+/// downstream by inspecting the originating `Expr` (see docs/audit/gaps.md
+/// GAP-1, "ir::Bits has no signed bit in v1").
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct Bits(pub Vec<NetId>);
+pub struct Bits {
+    pub nets: Vec<NetId>,
+    pub signed: bool,
+}
 
 impl Bits {
+    pub fn unsigned(nets: Vec<NetId>) -> Self {
+        Bits {
+            nets,
+            signed: false,
+        }
+    }
+    pub fn signed(nets: Vec<NetId>) -> Self {
+        Bits { nets, signed: true }
+    }
     pub fn width(&self) -> u32 {
-        self.0.len() as u32
+        self.nets.len() as u32
     }
 }
 
@@ -210,7 +227,7 @@ impl Module {
         for _ in 0..width {
             ids.push(self.alloc_net(name.map(str::to_string)));
         }
-        Bits(ids)
+        Bits::unsigned(ids)
     }
 }
 
