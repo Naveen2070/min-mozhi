@@ -152,7 +152,7 @@ fn resolve_bits_spec(
 ) -> Result<Bits, String> {
     if let Some(inner) = spec.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
         if inner.is_empty() {
-            return Ok(Bits(Vec::new()));
+            return Ok(Bits::unsigned(Vec::new()));
         }
         // Safe to use these literal ids directly as `NetId`s (rather than
         // remapping) because `parse` pre-sized `module.nets` to cover
@@ -166,7 +166,7 @@ fn resolve_bits_spec(
                     .map_err(|_| format!("bad net id `{s}`"))
             })
             .collect();
-        return Ok(Bits(ids?));
+        return Ok(Bits::unsigned(ids?));
     }
     let (name, width) = parse_name_width(spec)?;
     let bits = match named_bits.get(&name) {
@@ -189,7 +189,7 @@ fn resolve_bits_spec(
     // lines never encode net identity, only width — see the `port`
     // branch above), so this may be the sighting that first earns the
     // name for nets a port allocated earlier.
-    for id in &bits.0 {
+    for id in &bits.nets {
         module.nets[id.0 as usize].name = Some(name.clone());
     }
     Ok(bits)

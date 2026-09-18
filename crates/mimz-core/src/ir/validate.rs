@@ -120,10 +120,10 @@ fn shl_const_amount(
     driver: &HashMap<NetId, Vec<usize>>,
     b: &super::Bits,
 ) -> Option<u128> {
-    let &cell_idx = b.0.first().and_then(|n| driver.get(n))?.first()?;
+    let &cell_idx = b.nets.first().and_then(|n| driver.get(n))?.first()?;
     let single_driver = [cell_idx];
     if !b
-        .0
+        .nets
         .iter()
         .all(|n| driver.get(n).map(Vec::as_slice) == Some(&single_driver[..]))
     {
@@ -180,7 +180,7 @@ pub fn validate(module: &Module) -> Vec<ValidationError> {
         for (pin_name, bits) in &cell.pins {
             let is_output = matches!(*pin_name, "out" | "q" | "rdata");
             if is_output {
-                for net in &bits.0 {
+                for net in &bits.nets {
                     driver.entry(*net).or_default().push(i);
                     driven.insert(*net);
                 }
@@ -191,7 +191,7 @@ pub fn validate(module: &Module) -> Vec<ValidationError> {
         // this cell, same as an ordinary `out`/`q`/`rdata` pin above.
         if let CellKind::Mem { read_ports, .. } = &cell.kind {
             for (_, rdata) in read_ports {
-                for net in &rdata.0 {
+                for net in &rdata.nets {
                     driver.entry(*net).or_default().push(i);
                     driven.insert(*net);
                 }
@@ -209,7 +209,7 @@ pub fn validate(module: &Module) -> Vec<ValidationError> {
         // (docs/audit/gaps.md GAP-1's "driven-set seeding is
         // direction-blind" sub-gap).
         if *dir == crate::ast::Dir::In {
-            for net in &bits.0 {
+            for net in &bits.nets {
                 driven.insert(*net);
             }
         }
@@ -369,8 +369,11 @@ fn find_combinational_cycle(module: &Module) -> Option<Vec<NetId>> {
     for cell in &module.cells {
         if let CellKind::Mem { read_ports, .. } = &cell.kind {
             for (raddr, rdata) in read_ports {
-                for &i in &raddr.0 {
-                    edges.entry(i).or_default().extend(rdata.0.iter().copied());
+                for &i in &raddr.nets {
+                    edges
+                        .entry(i)
+                        .or_default()
+                        .extend(rdata.nets.iter().copied());
                 }
             }
             continue; // write side handled below, same as Dff
@@ -382,13 +385,13 @@ fn find_combinational_cycle(module: &Module) -> Option<Vec<NetId>> {
             .pins
             .iter()
             .filter(|(name, _)| !matches!(**name, "out" | "q" | "rdata"))
-            .flat_map(|(_, bits)| bits.0.iter().copied())
+            .flat_map(|(_, bits)| bits.nets.iter().copied())
             .collect();
         let outputs: Vec<NetId> = cell
             .pins
             .iter()
             .filter(|(name, _)| matches!(**name, "out" | "q" | "rdata"))
-            .flat_map(|(_, bits)| bits.0.iter().copied())
+            .flat_map(|(_, bits)| bits.nets.iter().copied())
             .collect();
         for &i in &inputs {
             edges.entry(i).or_default().extend(outputs.iter().copied());

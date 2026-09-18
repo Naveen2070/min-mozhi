@@ -118,11 +118,11 @@ fn lowers_constant_bit_select_write_as_a_masked_merge() {
     );
     let d_bits = find_port(&module, "d").clone();
     assert_eq!(
-        dff.pins["d"].0[3], d_bits.0[0],
+        dff.pins["d"].nets[3], d_bits.nets[0],
         "bit 3 of q's next value traces directly to input d"
     );
     assert_ne!(
-        dff.pins["d"].0[0], d_bits.0[0],
+        dff.pins["d"].nets[0], d_bits.nets[0],
         "bit 0 must NOT be overwritten by d"
     );
 }
@@ -188,8 +188,8 @@ fn lowers_constant_slice_write_as_a_masked_merge() {
     let v_bits = find_port(&module, "v").clone();
     for i in 0..4 {
         assert_eq!(
-            dff.pins["d"].0[4 + i],
-            v_bits.0[i],
+            dff.pins["d"].nets[4 + i],
+            v_bits.nets[i],
             "bit {} of q's next value (in range [7:4]) traces to v's bit {}",
             4 + i,
             i
