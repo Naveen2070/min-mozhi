@@ -99,7 +99,7 @@ fn lowers_a_register_with_no_reset_to_a_dff_cell() {
 
     let clk_bits = find_port(&module, "clk");
     assert_eq!(clk_bits.width(), 1);
-    assert_eq!(*clock, clk_bits.0[0]);
+    assert_eq!(*clock, clk_bits.nets[0]);
 
     assert_eq!(dff.pins["q"].width(), 8);
 
@@ -202,7 +202,7 @@ fn a_second_register_assigned_only_inside_an_if_does_not_disturb_the_first() {
     assert_eq!(dffs.len(), 2);
     let q_dff = dffs
         .iter()
-        .find(|c| module.nets[c.pins["q"].0[0].0 as usize].name.as_deref() == Some("q"))
+        .find(|c| module.nets[c.pins["q"].nets[0].0 as usize].name.as_deref() == Some("q"))
         .expect("one Dff drives `q`");
     assert_eq!(
         q_dff.pins["d"],
@@ -298,7 +298,7 @@ fn lowers_a_register_from_a_real_elaborated_design_with_clock_and_reset() {
     };
     assert_eq!(*edge, Edge::Rise);
     assert_eq!(
-        *clock, clk_bits.0[0],
+        *clock, clk_bits.nets[0],
         "the Dff's clock net is clk's own port net"
     );
 }

@@ -176,10 +176,10 @@ fn lowers_concat_preserves_msb_first_source_order_as_lsb_first_bits() {
         .expect("cab port")
         .1;
     assert_eq!(cab_bits.width(), 8);
-    for id in &cab_bits.0[0..4] {
+    for id in &cab_bits.nets[0..4] {
         assert_eq!(module.nets[id.0 as usize].name.as_deref(), Some("b"));
     }
-    for id in &cab_bits.0[4..8] {
+    for id in &cab_bits.nets[4..8] {
         assert_eq!(module.nets[id.0 as usize].name.as_deref(), Some("a"));
     }
 }
@@ -238,7 +238,7 @@ fn lowers_slice_to_a_subrange() {
         .expect("lo_nibble port")
         .1;
     assert_eq!(lo_nibble_bits.width(), 4);
-    assert_eq!(lo_nibble_bits.0, a_bits.0[0..4].to_vec());
+    assert_eq!(lo_nibble_bits.nets, a_bits.nets[0..4].to_vec());
 }
 
 #[test]
@@ -290,8 +290,8 @@ fn lowers_replicate_reuses_same_nets() {
     assert_eq!(rep_bits.width(), 3);
     // All three nets should be the same NetId (reused from `a`), not three
     // different allocations.
-    assert_eq!(rep_bits.0[0], rep_bits.0[1]);
-    assert_eq!(rep_bits.0[1], rep_bits.0[2]);
+    assert_eq!(rep_bits.nets[0], rep_bits.nets[1]);
+    assert_eq!(rep_bits.nets[1], rep_bits.nets[2]);
 }
 
 #[test]
@@ -353,19 +353,19 @@ fn lowers_replicate_preserves_msb_first_ordering() {
     // In MSB-first/source order, this reads as {a,b,a,b}, but in LSB-first
     // indexing, 'b' (LSB of each pair) is at indices 0,2 and 'a' (MSB) at 1,3.
     assert_eq!(
-        module.nets[rep_bits.0[0].0 as usize].name.as_deref(),
+        module.nets[rep_bits.nets[0].0 as usize].name.as_deref(),
         Some("b")
     );
     assert_eq!(
-        module.nets[rep_bits.0[1].0 as usize].name.as_deref(),
+        module.nets[rep_bits.nets[1].0 as usize].name.as_deref(),
         Some("a")
     );
     assert_eq!(
-        module.nets[rep_bits.0[2].0 as usize].name.as_deref(),
+        module.nets[rep_bits.nets[2].0 as usize].name.as_deref(),
         Some("b")
     );
     assert_eq!(
-        module.nets[rep_bits.0[3].0 as usize].name.as_deref(),
+        module.nets[rep_bits.nets[3].0 as usize].name.as_deref(),
         Some("a")
     );
 }
@@ -390,7 +390,7 @@ fn lowers_constant_index_to_a_single_bit_repoint() {
         .expect("bit port")
         .1;
     assert_eq!(bit_bits.width(), 1);
-    assert_eq!(bit_bits.0, vec![a_bits.0[0]]);
+    assert_eq!(bit_bits.nets, vec![a_bits.nets[0]]);
     // No cell of any kind was needed for a constant index.
     assert!(module.cells.is_empty());
 }
@@ -424,5 +424,5 @@ fn lowers_runtime_index_via_shr_and_a_zero_slice() {
     assert_eq!(shr_cells.len(), 1);
     let shr_out = &shr_cells[0].pins["out"];
     assert_eq!(shr_out.width(), 8, "Shr never grows past `a`'s own width");
-    assert_eq!(bit_bits.0, vec![shr_out.0[0]]);
+    assert_eq!(bit_bits.nets, vec![shr_out.nets[0]]);
 }

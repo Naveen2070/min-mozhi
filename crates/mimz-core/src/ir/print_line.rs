@@ -12,14 +12,14 @@ use std::fmt::Write;
 /// need the same detection, they just format the positive case
 /// differently.
 pub(super) fn contiguous_same_name(module: &Module, bits: &Bits) -> Option<String> {
-    if bits.0.is_empty() {
+    if bits.nets.is_empty() {
         return None;
     }
-    let first = bits.0[0];
+    let first = bits.nets[0];
     let name = module.nets[first.0 as usize].name.clone();
     let is_contiguous = name.is_some()
         && bits
-            .0
+            .nets
             .windows(2)
             .all(|w| w[1].0 == w[0].0 + 1 && module.nets[w[1].0 as usize].name == name);
     if is_contiguous { name } else { None }
@@ -30,13 +30,13 @@ pub(super) fn contiguous_same_name(module: &Module, bits: &Bits) -> Option<Strin
 /// for anything else, so the format never loses information even for a
 /// purely synthetic net group.
 fn format_bits(module: &Module, bits: &Bits) -> String {
-    if bits.0.is_empty() {
+    if bits.nets.is_empty() {
         return "{}".to_string();
     }
     match contiguous_same_name(module, bits) {
-        Some(name) => format!("{}[0:{}]", name, bits.0.len()),
+        Some(name) => format!("{}[0:{}]", name, bits.nets.len()),
         None => {
-            let ids: Vec<String> = bits.0.iter().map(|n| n.0.to_string()).collect();
+            let ids: Vec<String> = bits.nets.iter().map(|n| n.0.to_string()).collect();
             format!("{{{}}}", ids.join(","))
         }
     }

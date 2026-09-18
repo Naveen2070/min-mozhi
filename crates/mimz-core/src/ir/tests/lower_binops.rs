@@ -1,7 +1,7 @@
 use super::adder_design;
 use crate::ast::{Expr, ExprKind};
 use crate::elaborate::{Design, Signal};
-use crate::ir::{CellKind, lower, validate};
+use crate::ir::{CellKind, Module, lower, validate};
 use crate::span::Span;
 use std::collections::BTreeMap;
 
@@ -14,6 +14,12 @@ fn elaborate_src(src: &str) -> Design {
     crate::checker::check(std::slice::from_ref(&file)).expect("checks clean");
     crate::elaborate::elaborate_project(std::slice::from_ref(&file), None, &BTreeMap::new())
         .expect("elaborates")
+}
+
+/// `elaborate_src` + `lower`, for tests that only care about the final
+/// `Module` (GAP-1 Task 6's own sign/width-divergence regressions).
+fn lower_ok(src: &str) -> Module {
+    lower(&elaborate_src(src))
 }
 
 #[test]
@@ -30,6 +36,38 @@ fn lowers_wire_add_of_two_inputs_to_an_add_cell() {
     assert_eq!(add.pins["a"].width(), 8);
     assert_eq!(add.pins["b"].width(), 8);
     assert_eq!(add.pins["out"].width(), 9); // lossless add: N+1
+}
+
+/// GAP-1 Task 6, Step 4: `UnOp::Neg`'s `out` pin must grow by one bit,
+/// matching `checker::widths::ops`'s `Signed(n) -> Signed(n+1)` — this used
+/// to be one of the two documented width divergences (`ir/lower.rs`'s
+/// `Neg` arm used to keep `a.width()` unconditionally).
+#[test]
+fn neg_on_a_signed_operand_grows_by_one_bit_matching_the_checker() {
+    let src = "module M {\n  in a: signed[8]\n  out o: signed[9]\n  o = -a\n}\n";
+    let module = lower_ok(src);
+    let out = module.ports.iter().find(|(n, ..)| n == "o").unwrap();
+    assert_eq!(out.1.width(), 9);
+}
+
+/// GAP-1 Task 6, Step 5: a `Mul` literal operand must size to the OTHER
+/// operand's declared width before the multiply, not its own natural
+/// width (`2`'s natural width is 2 bits; `a`'s declared width is 8).
+#[test]
+fn mul_by_a_literal_sizes_the_literal_to_the_other_operands_width_not_its_own() {
+    let src = "module M {\n  in a: bits[8]\n  out o: bits[16]\n  o = a * 2\n}\n";
+    let module = lower_ok(src);
+    let mul = module
+        .cells
+        .iter()
+        .find(|c| c.kind == CellKind::Mul)
+        .unwrap();
+    assert_eq!(
+        mul.pins["b"].width(),
+        8,
+        "literal 2 must size to a's 8 bits, not its own natural 2-bit width"
+    );
+    assert_eq!(mul.pins["out"].width(), 16);
 }
 
 #[test]
@@ -596,76 +634,29 @@ fn a_literal_operand_is_sized_to_its_signed_siblings_width_and_the_comparison_is
     assert_eq!(executor.get_output("y").bits, crate::bits::Bits::Small(1));
 }
 
-/// Fix-round regression (reviewer C1): `-a < 200` for `a: signed[8]` must
-/// stay an UNSIGNED cell.
+/// UPDATED by GAP-1 Task 6 (2026-09-18): `-a < 200` for `a: signed[8]` now
+/// correctly lowers to a SIGNED comparison.
 ///
-/// The first cut of `expr_is_definitely_signed` recursed through any unary
-/// op, so `-a` reported signed. But the checker GROWS negation (`Signed(n)`
-/// -> `Signed(n + 1)`, `checker/widths/ops/mod.rs`) while `lower_expr`'s
-/// `Neg` arm keeps `a.width()` — so the `a` pin is 8 bits against a checker
-/// type of `Signed(9)`, the literal `200` lowers to its own 8-bit natural
-/// width, and `lower_binop`'s equal-width guard was satisfied by two widths
-/// that mean different things. Reading `200` as two's complement then makes
-/// it `-56` and flips half the input domain. `expr_is_definitely_signed` now
-/// only recognizes shapes whose lowered width IS a declared signal's width.
+/// History: the first cut of `expr_is_definitely_signed` recursed through
+/// any unary op, so `-a` reported signed while `Neg`'s `out` pin stayed at
+/// `a.width()` (the checker types `-a` as `Signed(9)`) — an 8-bit pin read
+/// as two's complement against an 8-bit literal `200` silently flipped half
+/// the input domain. The FIX at the time was to make `expr_is_definitely_
+/// signed` deliberately answer `false` for a `Neg` subtree, pinning the
+/// comparison unsigned and dodging inputs `1..=56` where that was still
+/// wrong (see this test's own prior history for the avoided range).
+///
+/// GAP-1 Task 6 closes the ROOT bug instead of dodging it: `UnOp::Neg`'s
+/// `out` pin now genuinely grows to 9 bits (Step 4), so `-a` and the
+/// (now width-matched, sibling-signed-inheriting) literal `200` both land
+/// on 9 bits, `cmp_signed = a.signed && b.signed` is `true`, and the
+/// signed reading is correct for EVERY input — no avoided range needed.
 #[test]
-fn a_negated_operand_keeps_the_comparison_unsigned() {
-    use crate::ast::{BinOp, UnOp};
-    use crate::elaborate::Width;
+fn a_negated_operand_now_makes_the_comparison_signed() {
     use crate::ir::exec::Executor;
 
-    let mut comb = BTreeMap::new();
-    comb.insert(
-        "y".to_string(),
-        Expr {
-            kind: ExprKind::Binary {
-                op: BinOp::Lt,
-                lhs: Box::new(Expr {
-                    kind: ExprKind::Unary {
-                        op: UnOp::Neg,
-                        expr: Box::new(super::ident("a")),
-                    },
-                    span: Span::default(),
-                }),
-                rhs: Box::new(Expr {
-                    kind: ExprKind::Int {
-                        value: crate::bits::Bits::Small(200),
-                        raw: "200".to_string(),
-                    },
-                    span: Span::default(),
-                }),
-            },
-            span: Span::default(),
-        },
-    );
-    let design = Design {
-        module: "neg_cmp".to_string(),
-        consts: BTreeMap::new(),
-        inputs: vec![Signal {
-            name: "a".into(),
-            width: Width {
-                bits: 8,
-                signed: true,
-            },
-        }],
-        outputs: vec![Signal {
-            name: "y".into(),
-            width: super::w(1),
-        }],
-        wires: vec![],
-        regs: vec![],
-        mems: vec![],
-        comb,
-        procs: vec![],
-        clocks: vec![],
-        resets: vec![],
-        funcs: Default::default(),
-        unknown_signals: Default::default(),
-        extern_instances: vec![],
-        asserts: vec![],
-        covers: vec![],
-    };
-    let module = lower(&design);
+    let src = "module M {\n  in a: signed[8]\n  out y: bit\n  y = (-a) < 200\n}\n";
+    let module = lower_ok(src);
     let cmp = module
         .cells
         .iter()
@@ -674,26 +665,22 @@ fn a_negated_operand_keeps_the_comparison_unsigned() {
     assert_eq!(
         cmp.pins["a"].width(),
         cmp.pins["b"].width(),
-        "the premise: the equal-width guard alone does NOT catch this — \
-         `-a` lowers to 8 bits (the checker types it `Signed(9)`) and the \
-         literal `200`'s natural width is also 8"
+        "-a now correctly grows to 9 bits (Step 4), and the literal 200 \
+         resizes to match"
     );
+    assert_eq!(cmp.pins["a"].width(), 9);
     assert_eq!(
         cmp.kind,
-        CellKind::Lt { signed: false },
-        "a negated operand must not mark the comparison signed"
+        CellKind::Lt { signed: true },
+        "-a is now correctly recognized as signed, closing the Neg width \
+         divergence this test used to pin as an open residual"
     );
 
-    // Ground truth: `-a` is `Signed(9)`, so it spans -127..=128 and is ALWAYS
-    // < 200 — every input should answer 1. A signed cell answers 0 for `a=0`
-    // (it reads `200` as `-56`), which is the regression this pins.
-    //
-    // `a` in 1..=56 still answers 0 even now: that is the SEPARATE,
-    // pre-existing `Neg` width divergence above (`lower` never grows the
-    // negation), documented as its own open residual in `docs/audit/gaps.md`
-    // and deliberately not fixed here. The inputs below avoid it.
+    // Ground truth: `-a` is `Signed(9)`, so it spans -127..=128 and is
+    // ALWAYS < 200 for every 8-bit `a` — including the 1..=56 range the old
+    // (bug-preserving) version of this test had to avoid.
     let mut executor = Executor::new(&module);
-    for a in [0u128, 100, 200] {
+    for a in [0u128, 1, 56, 100, 127, 200, 255] {
         executor.set_input("a", crate::value::Val::new(a, 8, false));
         executor.tick();
         assert_eq!(

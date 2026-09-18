@@ -54,7 +54,7 @@ fn rejects_a_pin_width_mismatch() {
     // width per `width_rules::lossless_result`, and with `b` unchanged
     // at 8 the max()+1 formula still lands on 9 either way — `out` is
     // the pin with a genuine fixed-formula contract here, not `a`.)
-    let short = Bits(vec![NetId(0)]); // 1 bit, but Add's `out` needs 9
+    let short = Bits::unsigned(vec![NetId(0)]); // 1 bit, but Add's `out` needs 9
     module.cells[0].pins.insert("out", short);
     let errors = validate::validate(&module);
     assert!(
@@ -165,7 +165,7 @@ fn rejects_a_blackbox_port_shape_mismatch() {
         kind: CellKind::BlackBox {
             module_name: "Pll".to_string(),
         },
-        pins: [("clk_in", clk), ("unexpected_pin", Bits(vec![]))]
+        pins: [("clk_in", clk), ("unexpected_pin", Bits::unsigned(vec![]))]
             .into_iter()
             .collect(),
         span: crate::span::Span::default(),
