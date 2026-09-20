@@ -245,16 +245,15 @@ no new `CellKind`) all lower now. `clog2`/`sync.double_flop`/`sync.pulse`
 are `unreachable!()` (never survive to a checked `Design`, same guarantee
 `value::fn_eval::call`'s own matching arm already relies on).
 
-**Still open — `min`/`max`/`abs` are refused loudly, not lowered:** all
-three need genuinely signed interpretation to compute correctly (is the
-operand negative?), which `ir::Bits`'s v1 schema cannot express (see
-`ir/exec.rs`'s own "unsigned only" limitation, unchanged by this round).
-`ir::lower` now `unimplemented!()`s on them explicitly rather than
-silently treating every operand as non-negative. Closing this residual
-needs the IR to gain real signed tracking (a `Kind`-style width+signed
-pair threaded through `lower_expr`'s return type, mirroring
-`emit_verilog/kinds.rs::infer_kind`) — a materially larger, separately-
-scoped follow-up, not attempted here.
+**`min`/`max`/`abs` — RESOLVED 2026-09-18/19 (IR-base-gap-closure Task 6 +
+its fix round).** They were refused loudly (`unimplemented!()`) while
+`ir::Bits`'s v1 schema could not express signedness. `Bits` now carries a
+per-value `signed: bool` (the `Kind`-style pair this paragraph used to call
+a separately-scoped follow-up), so all three lower for real as `Lt` + `Mux`
+over existing cell kinds — no new `CellKind`, and `extend`'s sign-dependent
+branch reads the same flag instead of a best-effort `Expr`-shape heuristic.
+See the dedicated sub-gap "`ir::Bits` has no signed bit in v1" below for
+what the flag is computed from and what stays out of scope.
 
 **Making `signed(x)` lowerable widens an already-existing signed-comparison
 hole, not a new one — RESOLVED 2026-09-05 for the ORDERING comparisons
@@ -270,16 +269,22 @@ input already reached `lower_binop` with no guard and no cast needed.
 What changed, precisely:
 
 - **Schema (additive, not a new variant).** `CellKind::{Lt,Le,Gt,Ge}` gained
-  a `signed: bool` field. `ir::Bits` is UNCHANGED — it still carries no sign
-  bit; signedness is scoped to exactly these four cell kinds rather than
-  threaded through `lower_expr`'s return type (the `Kind`-style width+signed
-  pair this doc floats above, still the larger separately-scoped follow-up
-  that `min`/`max`/`abs` need).
+  a `signed: bool` field. `ir::Bits` was UNCHANGED at the time — it carried
+  no sign bit; signedness was scoped to exactly these four cell kinds rather
+  than threaded through `lower_expr`'s return type. **Superseded 2026-09-18
+  (Task 6):** `ir::Bits` now DOES carry `signed`, and it is what the four
+  cell kinds' flag is computed from; see the sub-gap below.
 - **`Eq`/`Ne` deliberately untouched**, still unit variants: two's-complement
   equality compares the same bit patterns under either interpretation.
 - **Arithmetic (`Add`/`Sub`/`Mul`/`*Wrap`/`Shl`/`Shr`) untouched** — those
-  remain unsigned in the IR, so this sub-gap is closed only for ordering
-  comparisons, not for signed arithmetic generally.
+  `CellKind`s still carry no `signed` field of their own. **Amended
+  2026-09-19:** their RESULT `Bits` does now carry one (`a.signed ||
+b.signed` for the lossless/wrapping/bitwise families, `a.signed` for the
+  shifts — the same rule `width_rules::lossless_result`/`matched_result`/
+  `shift_result` give the checker), so a derived value's signedness reaches
+  `extend`/`min`/`max`/`abs`/unary `-`/comparison lowering correctly. Only
+  `CellKind::Mul` still has no `signed` flag, so a genuinely signed multiply
+  executes unsigned in `ir::exec` — pre-existing, separately scoped.
 - **`Lt`/`Le` are the ones with real new BEHAVIOUR.** They are the only
   ordering comparisons `ir::lower` produces; `BinOp::Gt`/`Ge` still fall into
   `lower_binop`'s `unimplemented!()` catch-all, unchanged and out of scope
@@ -482,7 +487,7 @@ Verification: `cargo test -p mimz-core ir::` clean (94 passed); `cargo test
 english/tanglish/tamil/mixed, plus tamil-pure for `sync_loop_search`) now
 validate cleanly.
 
-### Sub-gap (2026-09-05, still open): `ir::lower` does not grow `UnOp::Neg`, but the checker does
+### Sub-gap (2026-09-05, RESOLVED 2026-09-18 — Task 6): `ir::lower` did not grow `UnOp::Neg`, but the checker does
 
 Pre-existing and independent of the signed-comparison work above, surfaced
 while reviewing it. `checker/widths/ops/mod.rs` types negation losslessly —
@@ -500,6 +505,212 @@ guard now sidesteps it by refusing to call a negated expression signed
 underlying width bug is untouched and belongs in its own task — it changes
 pin widths, so it interacts with `validate`'s matched-`a`/`b` checks and with
 `emit_verilog` parity, unlike the comparison flag, which is metadata-only.
+
+**Fixed 2026-09-18 (Task 6).** `UnOp::Neg`'s `out` pin is now
+`a.width() + 1` when `a.signed`, matching the checker exactly, and the
+result `Bits` inherits `a.signed`. The heuristic the guard used to sidestep
+it with is deleted;
+`a_negated_operand_keeps_the_comparison_unsigned` became
+`a_negated_operand_now_makes_the_comparison_signed`.
+
+### Sub-gap (2026-09-18, RESOLVED 2026-09-20 — Task 6 + four fix rounds): `ir::Bits` has no signed bit in v1
+
+**What.** `ir::Bits` was a bare `Vec<NetId>`, so a lowered value carried no
+signedness at all. Everything that needed it re-derived it from the SOURCE
+`Expr` with a best-effort two-shape proof (`expr_is_definitely_signed`,
+`arg_is_definitely_unsigned`, `unshadowed_signal_signed`), which is why
+`min`/`max`/`abs` were refused outright and `extend` panicked whenever it
+could not prove its argument unsigned.
+
+**Fix.** `Bits { nets, signed }`, computed once at construction and never
+re-derived downstream. The invariant is exact and narrow: **a value's
+`Bits::signed` equals the signedness of the `Ty` the checker gives that same
+expression** — nothing weaker ("it might be negative") and nothing looser
+("it came from something signed"). Concretely: stamped from the declared
+`Width.signed` for input ports, register Qs and extern-instance outputs;
+flipped by `signed(x)`/`unsigned(x)`; carried by `trunc` (the checker keeps
+the operand's kind); and — the fix round's correction, 2026-09-19 —
+**computed for DERIVED values too**. Without that last piece the flag was
+`false` for every
+computed expression, so all four Task 6 features silently reverted to their
+unsigned reading the moment an operand was an expression rather than a bare
+signed port (`extend(a - b, 16)` zero-extended, `min(a - b, c)` compared
+unsigned, `abs(a - b)`/`-(a - b)` came out one bit short). `lower_binop` now
+gives its result the signedness the checker's own rules give it
+(`a.signed || b.signed` for `+`/`-`/`*`/the `+%` family/bitwise — `||` not
+`&&`, because a re-sized literal's `ConstVal` is always built unsigned;
+`a.signed` for the shifts; always unsigned for comparisons and `&&`/`||`),
+`~x` inherits its operand's flag (the checker's `BitNot` returns the operand
+type unchanged), `abs` is `signed` like the checker's `Signed(n+1)`, and
+`min`/`max` give a literal operand the same `lower_expr_sized` resize +
+sign-inheritance that `ExprKind::Binary`'s comparison path already had (so
+`min(x, 3)` and the `max(x, 0)` clamp idiom lower to a valid module instead
+of a `WidthMismatch`). Pinned by four Executor-level regression tests in
+`crates/mimz-core/src/ir/tests/lower_builtins.rs`, all over computed
+operands.
+
+**Second fix round, 2026-09-19 — the shapes that "inherit" got wrong.** A
+re-review found the same disease at three more sites, all of them a
+`Bits`-producing lowering that guessed instead of following the checker's own
+rule for that expression kind:
+
+- A **slice** and a **bit-select** (constant OR runtime index) are
+  UNCONDITIONALLY unsigned — `width_rules::slice_result` returns
+  `signed: false` whatever the base was (the single shared rule that makes
+  BUG-21 structurally unreintroducible), and `checker/widths/expr/lvalue.rs`
+  types a bit-select as `Ty::Bit`. They used to inherit the base's flag, so
+  `extend(a[7:4], 8)` sign-extended garbage and `min(a[7:4], b[7:4])` compared
+  signed. The runtime bit-select needed its own fix: it rides on a `Shr`,
+  which DOES keep its left operand's signedness, so the 1-bit result has to
+  drop that flag explicitly.
+- An **`if`-expression** and a **`match`** result now carry their
+  branches'/arms' signedness. Both were built straight from
+  `Module::alloc_bits` (always unsigned), so `extend(if s { a } else { b },
+16)` zero-extended and `-(if …)`/`abs(if …)` came out a bit short. The
+  checker unifies every branch to one `Ty` (`emit_verilog/kinds.rs` derives
+  the mux's `Kind` from its branches the same way), so there is exactly one
+  flag to take: all three inline `Mux` literals now go through
+  `push_mux_cell`, which holds that shared flag.
+
+Pinned by five more Executor-level regression tests in the same file, over
+slice, bit-select, runtime-bit-select, `if`-expression and `match` operands.
+
+**Third fix round, 2026-09-19 — the constant-operand family.** A third review
+found five more sites, and every one of them was the SAME shape: a value whose
+checker `Ty` is signed lost the flag because one side/branch/operand of it was
+a compile-time constant. The checker gives a constant NO signedness of its own
+(`Ty::CtInt` simply becomes its context's `Ty` — `matched_ty`/`adapt_lossless`,
+`crates/mimz-core/src/checker/widths/ops/mod.rs`) and `lower_const` therefore
+builds every constant's `Bits` unsigned. So any merge that asked both sides to
+be signed (`&&`) let that constant veto a genuinely signed sibling, and any
+context that had no sibling at all never stamped anything.
+
+Fixed with one rule stated two ways, rather than five independent patches:
+
+- **Where the context is a sibling value, merge with `||`, not `&&`.** For two
+  REAL operands the two are equivalent — `width_rules::matched_result` demands
+  an identical `Kind` and `lossless_result` demands identical signedness (the
+  checker rejects a mixed comparison/arithmetic outright, E0403), and the
+  checker unifies every mux branch/arm to one `Ty`. They differ only on a
+  constant operand, where `||` is exactly "the sibling's sign wins", which is
+  what `Ty::CtInt` does. Applied to `cmp_signed` for `<`/`<=`/`>`/`>=` (the
+  literal-resize stamp beside it only ran on a width MISMATCH, so `a < -128`
+  over a `signed[8]` — literal already 8 bits — compared unsigned) and to
+  `push_mux_cell` (so `if c { x } else { 0 }`, `match s { 0 => 0  1 => a }` and
+  `min(a, 0)`/`max(a, 0)` keep their signedness). `||` cannot invent a sign a
+  checker-valid program does not have: a positive literal that `fit`s in
+  `signed[N]` always has natural width `< N`, so it reaches the resize-and-
+  stamp path instead.
+- **Where the context is a DECLARED type, stamp it directly** — there is no
+  sibling to merge with. A `fn` call's result is its declared return type (so
+  `-> signed[8] { … return -1 }` is signed), a `fn` argument is its
+  parameter's declared type (so `ext(-1)` binds a `signed[8]` `-1`, not a
+  1-bit `1`), and a memory read is the memory's element type
+  (`checker/widths/expr/lvalue.rs` types `m[addr]` as `Ty::Signed(width)` for
+  a `mem m: signed[N][D]`, and `emit_verilog/kinds.rs` reads the same element
+  `Kind`).
+
+Two more things fell out of the same round. `lower_expr_sized`'s blanket
+`locals.is_none()` gate refused to const-fold ANY compound constant inside an
+inlined `fn` body, so a signed fn's `return -1` (an `Unary{Neg}`, not a bare
+`Int`) lowered at its operand's own 1-bit natural width and returned `1`; the
+gate is now `visible_consts(locals)`, which hides only the design-level
+constants a local name actually shadows — the real hazard the gate existed
+for — and lets everything else fold. And `lower_seq_stmts`'s branch-merge, the
+fourth and last inline `Mux` literal, now goes through `push_mux_cell` too.
+
+Pinned by nine more Executor-level regression tests in the same file, over a
+same-width literal comparison, an `if`/`match` with a literal branch, a signed
+fn returning a literal, a signed memory read, a literal fn argument, a nested
+literal-branch mux, an array-element read and the `min`/`max` clamp idiom.
+
+**Fourth fix round, 2026-09-20 — the same disease on the WIDTH axis.** Rounds
+1-3 only ever touched the SIGN axis. A `Ty::CtInt` has no width of its own
+either, and `lower_expr` sizes a constant at its own natural/arithmetic-growth
+width unless the consuming site explicitly re-sizes it through
+`lower_expr_sized`. Every site rounds 1-3 taught to apply a SIGN context was
+therefore still applying only half of that context. The review that found this
+reproduced six divergences through the full pipeline, all pre-existing (none a
+regression of rounds 1-3); the systematic `lower_expr(` call-site pass this
+round ran on top of them found three more:
+
+- `LowerCtx::resolve` read a wire/output's declared `width.bits` but never its
+  `width.signed`, so `wire w: signed[8] = -1` lowered unsigned (F1).
+- An `if`-expression's branches and a `match`'s arms were lowered with plain
+  `lower_expr`, so a constant branch kept its natural width and the mux
+  returned the raw literal — `if s { a } else { -1 }` gave `1` (F2).
+- A sequential assignment's RHS (`SeqStmt::Default`, `Target::Signal`,
+  `Target::MemWrite`'s data) was never sized or signed to the register's /
+  memory element's declared type (F3).
+- A register's RESET value was lowered at the folded `ConstVal`'s own natural
+  width — `elaborate::module`'s `const_eval_wide` stores it un-resized — so
+  `reg q: signed[8] = -1` reset to a 1-bit `1` (F4).
+- `Mul`'s literal-resize special case matched only a bare `ExprKind::Int`,
+  missing `a * -1` and `a * K`; both hit `PortWidthMismatch` at `validate` on
+  a checker-valid program (F5).
+- The const-foldable resize was gated on `requires_matched_ab`, which
+  deliberately excludes the lossless ops, so a constant operand of `+`/`-`/`*`
+  (and of the `+%` family, also absent from that set) was never sized or
+  signed to its sibling at all, although `adapt_lossless`/`matched_ty` give it
+  exactly that type (F6).
+- Systematic pass: a slice write's RHS (`q[7:4] <- 3`) was lowered at the
+  literal's natural width and then spliced by `clone_from_slice`, which
+  PANICKED on the length mismatch — `lower_bitselect_write` now takes the RHS
+  as an `Expr` and sizes it to the slot. A memory read/write ADDRESS is the
+  same constant-context position and now adopts the memory's `clog2(depth)`
+  width. And a `fn`-body `let` bound to a constant (`let m = 1  v & m`) is an
+  untyped `Ty::CtInt` at the checker but an already-lowered `Bits` in the IR,
+  invisible to `is_const_foldable`; `LowerCtx::local_consts` now keeps the
+  folded value visible through `visible_consts` for the rest of that body.
+
+The rule is unchanged from round 3, just applied to both axes at once: where
+the context is a SIBLING value, the constant adopts that sibling's width and
+sign; where the context is a DECLARED type, both are stamped from the
+declaration. Two supporting changes made that observable rather than merely
+representable. `ir::exec`'s arithmetic cells (`Add`/`Sub`/`Mul` and the `+%`
+family) now read their operand pins' own `Bits::signed` (`||`, same rule as
+`lower_binop`'s `out_signed`) instead of evaluating every operand as unsigned,
+so a lossless op sign-extends into its growth bit the way `value::binary`'s
+`as_i128` and Verilog's `$signed` do — this is also what closes the
+"`CellKind::Mul` executes unsigned in `ir::exec`" note this section used to
+carry. And `validate`'s `CellKind::Mux` rule, which checked only the `sel`
+pin, now checks BOTH data pins against `out`: F2/F3/F4 were all SILENT
+precisely because it did not. That rule made `abs`'s own mux (whose `-x` arm
+is a bit wider than its `x` arm) a true positive, so `Builtin::Abs` now
+sign-extends the untouched arm explicitly — semantically a no-op, since that
+arm is only selected when `x >= 0`.
+
+Pinned by fifteen Executor-level regression tests in
+`crates/mimz-core/src/ir/tests/lower_ct_width.rs`, each RED against the
+pre-round-4 tree. `tests/golden/ir/async_reset.ir` was regenerated: its
+`+% 1` literal and its reset `0` are now 8-bit constants instead of 1-bit
+ones, with no change in cell count.
+
+**Honest limit of this claim.** The sign axis and the width axis are now both
+applied at every site the systematic `lower_expr(` call-site pass could
+justify — that pass asked, for all 41 sites, whether the position's
+sibling/declared context can require a width or sign a bare `lower_expr` would
+miss. The sites deliberately left alone are recorded below. That is a
+stronger statement than round 3's, but it is still a statement about the sites
+this codebase has today, not a proof: four rounds have each found the same
+disease at sites the previous round did not think to look at. The `Mux`
+`a`/`b`-vs-`out` validation added here is the structural part — it turns this
+class from silent to loud for every future mux — but `Concat`, `Replicate`,
+`Slice` bases and shift amounts have no equivalent guard.
+
+**Deliberately still out of scope.** `Concat`/`Replicate` results default to
+unsigned — they merge multiple sources, so there is no single flag to inherit,
+and the checker types both unsigned anyway (it rejects a `signed` operand of
+`{…}` outright, E0403, so nothing signed can reach them). Their PARTS need no
+resize either: E0405 ("a bare literal has no width inside `{…}`") rejects an
+untyped constant part outright. A shift AMOUNT is deliberately not resized to
+its left operand's width — `width_rules::shift_result` derives `<<`'s growth
+from that width, so widening a constant amount would inflate the result — and
+`BinOp::Shl`/`Shr` are excluded from `adapts_const_operand` for that reason.
+`lower_const` stays context-free and unsigned, which is what `Ty::CtInt` is;
+the context is applied by the caller, either by `||` against a sibling or by
+stamping a declared type — see the third fix round above for why that is the
+rule rather than a to-do.
 
 ### Sub-gap (2026-09-04, RESOLVED 2026-09-04): `ir::validate`'s driven-set seeding was direction-blind
 
