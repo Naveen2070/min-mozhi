@@ -73,7 +73,23 @@ fn expected_widths(
     driver: &HashMap<NetId, Vec<usize>>,
 ) -> Result<Vec<(&'static str, u32)>, (u32, u32)> {
     match kind {
-        CellKind::Mux => Ok(vec![("sel", 1)]),
+        // `sel` is always 1 bit, and BOTH data pins must already be at the
+        // output's width. `lower.rs` sizes `out` as `a.width().max(b.width())`,
+        // so this only bites when the two arms genuinely disagree — which
+        // means an untyped compile-time-constant arm was lowered at its own
+        // natural width instead of adopting its sibling's (`ExprKind::IfExpr`,
+        // `lower_match`, `lower_seq_stmts`'s branch merge). That produced a
+        // SILENTLY wrong value — `if c { a } else { -1 }` returning the raw
+        // 1-bit literal — because this rule used to check `sel` alone (GAP-1
+        // Task 6 round 4's guard-rail; findings 2/3/4 were all invisible to
+        // `validate` for exactly this reason).
+        CellKind::Mux => Ok(vec![
+            ("sel", 1),
+            ("a", pins["out"].width()),
+            ("b", pins["out"].width()),
+        ]),
+        // `d` -> `q` was already checked (as `q` against `d`); naming `q` as
+        // the expectation keeps the error pointing at the declared side.
         CellKind::Dff { .. } => Ok(vec![("q", pins["d"].width())]),
         CellKind::Add | CellKind::Sub => {
             Ok(vec![("out", pins["a"].width().max(pins["b"].width()) + 1)])
@@ -145,14 +161,13 @@ fn shl_const_amount(
 /// (`And`/`Or`/`Xor`), comparison (`Eq`/`Ne`/`Lt`/`Le`/`Gt`/`Ge`), and
 /// logical (`LogicAnd`/`LogicOr`) ops — mirroring
 /// `width_rules::matched_result`'s contract at the AST level.
+/// (`Mux`'s `a`/`b` are covered by `expected_widths` instead, against its
+/// `out` pin — a stronger statement than "equal to each other".)
 /// `Add`/`Sub`/`Mul`/`*Wrap`/`Shl`/`Shr` are deliberately absent: per
 /// `width_rules::lossless_result` and `lower.rs`'s own `lower_binop`,
 /// those ops either legitimately allow differing operand widths (lossless
 /// growth) or don't define an a/b width relationship at all (shifts), so
-/// flagging them here would be a false positive. `Mux`'s `a`/`b` are also
-/// excluded on purpose — `lower.rs` widens `Mux`'s output to
-/// `a.width().max(b.width())`, so a `Mux` legitimately takes differently
-/// sized arms.
+/// flagging them here would be a false positive.
 fn requires_matched_ab(kind: &CellKind) -> bool {
     matches!(
         kind,

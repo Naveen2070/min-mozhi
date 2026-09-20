@@ -22,9 +22,28 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1442 tests** as of 2026-09-18 (`cargo test --workspace`; the count is
+**1475 tests** as of 2026-09-20 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
-+2 from `crates/mimz-core/src/ir/tests/lower_binops.rs` (2026-09-10
++5 from `crates/mimz-core/src/ir/tests/lower_builtins.rs` (2026-09-10
+IR-base-gap-closure plan, Task 6 fix round 2) —
+`a_runtime_bit_select_is_unsigned_even_over_a_signed_base`,
+`a_slice_and_a_constant_bit_select_are_unsigned_even_over_a_signed_base`,
+`min_over_two_slices_of_signed_bases_compares_unsigned`,
+`an_if_expressions_result_inherits_its_branches_signedness` and
+`a_match_expressions_result_inherits_its_arms_signedness`, pinning the
+operand SHAPES round 1 never reached: a slice or bit-select is
+unconditionally unsigned (`width_rules::slice_result`), while an `if`/`match`
+result carries its branches' shared signedness; +4 from the same file (2026-09-10
+IR-base-gap-closure plan, Task 6 fix round) —
+`extend_of_a_computed_signed_expression_sign_extends`,
+`min_over_a_computed_signed_operand_compares_signed`,
+`min_max_with_a_literal_operand_size_and_sign_the_literal_to_its_sibling`
+and `abs_and_neg_over_a_computed_signed_operand_grow_by_one_bit`, pinning
+Task 6's features over COMPUTED (not bare-port) operands: `lower_binop` now
+computes its result's `Bits::signed` from its operands the same way the
+checker's `width_rules` does, and `min`/`max` give a literal operand the
+same resize-and-inherit treatment `ExprKind::Binary`'s comparison path
+already had; +2 from `crates/mimz-core/src/ir/tests/lower_binops.rs` (2026-09-10
 IR-base-gap-closure plan, Task 6) —
 `neg_on_a_signed_operand_grows_by_one_bit_matching_the_checker` and
 `mul_by_a_literal_sizes_the_literal_to_the_other_operands_width_not_its_own`,

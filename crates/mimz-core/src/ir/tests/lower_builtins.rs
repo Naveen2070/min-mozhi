@@ -314,9 +314,19 @@ fn signed_cast_is_a_pure_identity_no_new_cell() {
             name: "a".into(),
             width: w(8),
         }],
+        // `signed[8]`, not `bits[8]`: E0401 ("expected `bits[8]`, found
+        // `signed[8]`") rejects an output whose declared kind disagrees with
+        // its driver, so a `bits[8]` output driven by `signed(a)` is not a
+        // `Design` the real pipeline can produce. It mattered once
+        // `LowerCtx::resolve` started stamping the DECLARED signedness onto a
+        // resolved signal (GAP-1 Task 6 round 4, F1) — which is exactly what
+        // `emit_verilog`'s own `build_decls` does.
         outputs: vec![Signal {
             name: "y".into(),
-            width: w(8),
+            width: crate::elaborate::Width {
+                bits: 8,
+                signed: true,
+            },
         }],
         wires: vec![],
         regs: vec![],
@@ -618,4 +628,482 @@ fn xnor_executes_to_the_negated_xor_reduction() {
     ex.set_input("a", crate::value::Val::new(0b0000_0001, 8, false));
     ex.tick();
     assert_eq!(ex.get_output("y").bits, crate::bits::Bits::Small(0));
+}
+
+// ---------------------------------------------------------------------------
+// GAP-1 Task 6 fix round: COMPUTED operands.
+//
+// Every test above feeds a builtin a bare signal, so every one of them reads
+// a `Bits::signed` that was stamped at port-allocation time. The flag was
+// never computed for a DERIVED value (`lower_binop`'s results all came back
+// `signed: false`), so each Task 6 feature silently reverted to its unsigned
+// reading the moment its operand was an expression rather than a port. These
+// use the real source pipeline (so the checker assigns the declared types)
+// and assert VALUES through the IR executor, not just a clean `validate`.
+// ---------------------------------------------------------------------------
+
+use super::lower_valid;
+
+/// Finding 1: `extend` of a computed signed value must SIGN-extend.
+/// `a - b` is `signed[9]`; with `a = 0, b = 1` it is `-1` (`0x1FF`), so a
+/// 16-bit `extend` must be `0xFFFF`, not the `0x01FF` a zero-pad gives.
+#[test]
+fn extend_of_a_computed_signed_expression_sign_extends() {
+    let src = "module M {\n  in a: signed[8]\n  in b: signed[8]\n  out o: signed[16]\n  o = extend(a - b, 16)\n}\n";
+    let module = lower_valid(src);
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("a", crate::value::Val::new(0, 8, true));
+    ex.set_input("b", crate::value::Val::new(1, 8, true));
+    ex.tick();
+    assert_eq!(
+        ex.get_output("o").bits,
+        crate::bits::Bits::Small(0xFFFF),
+        "extend(a - b, 16) over signed operands must sign-extend -1 to 0xFFFF"
+    );
+}
+
+/// Finding 2: `min` over a COMPUTED signed operand must compare signed.
+/// `a - b` is `signed[9]` = `-5`, `c` is `signed[9]` = `3`; an unsigned `Lt`
+/// reads `-5` as `507` and wrongly picks `3`.
+#[test]
+fn min_over_a_computed_signed_operand_compares_signed() {
+    let src = "module M {\n  in a: signed[8]\n  in b: signed[8]\n  in c: signed[9]\n  out o: signed[9]\n  o = min(a - b, c)\n}\n";
+    let module = lower_valid(src);
+    assert!(
+        module
+            .cells
+            .iter()
+            .any(|c| matches!(c.kind, crate::ir::CellKind::Lt { signed: true })),
+        "min over a computed signed operand must use a SIGNED Lt cell"
+    );
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("a", crate::value::Val::new(0, 8, true));
+    ex.set_input("b", crate::value::Val::new(5, 8, true));
+    ex.set_input("c", crate::value::Val::new(3, 9, true));
+    ex.tick();
+    assert_eq!(
+        ex.get_output("o").bits,
+        crate::bits::Bits::Small(0x1FB), // -5 in 9 bits
+        "min(a - b, c) must be -5, not 3"
+    );
+}
+
+/// Finding 3: a LITERAL operand of `min`/`max` must be re-sized to its
+/// sibling's width (the checker's `matched_ty` types it that way) AND
+/// inherit its signedness — otherwise the `Lt` gets a 2-bit `Const` on an
+/// 8-bit pin (`WidthMismatch`, an invalid module). `max(x, 0)` is the stock
+/// clamp idiom, so both directions are covered here.
+#[test]
+fn min_max_with_a_literal_operand_size_and_sign_the_literal_to_its_sibling() {
+    let src = "module M {\n  in a: signed[8]\n  out lo: signed[8]\n  out hi: signed[8]\n  lo = min(a, 3)\n  hi = max(a, 0)\n}\n";
+    let module = lower_valid(src);
+    // One `Const` per literal, not two: the foldable side is lowered once,
+    // already at its sibling's width, instead of being lowered naturally and
+    // then re-lowered (which left the natural-width cell orphaned).
+    assert_eq!(
+        module
+            .cells
+            .iter()
+            .filter(|c| matches!(c.kind, crate::ir::CellKind::Const { .. }))
+            .count(),
+        2,
+        "no orphaned natural-width Const cells"
+    );
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("a", crate::value::Val::new(0xFB, 8, true)); // -5
+    ex.tick();
+    assert_eq!(
+        ex.get_output("lo").bits,
+        crate::bits::Bits::Small(0xFB),
+        "min(-5, 3) must be -5"
+    );
+    assert_eq!(
+        ex.get_output("hi").bits,
+        crate::bits::Bits::Small(0),
+        "max(-5, 0) must clamp to 0"
+    );
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("a", crate::value::Val::new(7, 8, true));
+    ex.tick();
+    assert_eq!(
+        ex.get_output("lo").bits,
+        crate::bits::Bits::Small(3),
+        "min(7, 3) must be 3"
+    );
+    assert_eq!(
+        ex.get_output("hi").bits,
+        crate::bits::Bits::Small(7),
+        "max(7, 0) must be 7"
+    );
+}
+
+/// Finding 4: `abs`/unary `-` over a COMPUTED signed operand must grow by
+/// one bit, the same as over a bare signed port. `a - b` is `signed[9]`, so
+/// both results are `signed[10]` — a 9-bit result is a `PortWidthMismatch`.
+#[test]
+fn abs_and_neg_over_a_computed_signed_operand_grow_by_one_bit() {
+    let src = "module M {\n  in a: signed[8]\n  in b: signed[8]\n  out o: signed[10]\n  out n: signed[10]\n  o = abs(a - b)\n  n = -(a - b)\n}\n";
+    let module = lower_valid(src);
+    for name in ["o", "n"] {
+        let port = module.ports.iter().find(|(p, ..)| p == name).unwrap();
+        assert_eq!(port.1.width(), 10, "`{name}` must be 10 bits wide");
+    }
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("a", crate::value::Val::new(0, 8, true));
+    ex.set_input("b", crate::value::Val::new(5, 8, true));
+    ex.tick();
+    assert_eq!(
+        ex.get_output("o").bits,
+        crate::bits::Bits::Small(5),
+        "abs(0 - 5) must be 5"
+    );
+    assert_eq!(
+        ex.get_output("n").bits,
+        crate::bits::Bits::Small(5),
+        "-(0 - 5) must be 5"
+    );
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("a", crate::value::Val::new(5, 8, true));
+    ex.set_input("b", crate::value::Val::new(0, 8, true));
+    ex.tick();
+    assert_eq!(
+        ex.get_output("o").bits,
+        crate::bits::Bits::Small(5),
+        "abs(5 - 0) must be 5"
+    );
+    assert_eq!(
+        ex.get_output("n").bits,
+        crate::bits::Bits::Small(0x3FB), // -5 in 10 bits
+        "-(5 - 0) must be -5"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// GAP-1 Task 6 fix round 2: operand SHAPES the round-1 tests never reached.
+//
+// Round 1 only ever built its computed operands out of binops, so two whole
+// families of `Bits`-producing sites kept the wrong flag:
+//   * slices and bit-selects INHERITED their base's `signed`, but
+//     `width_rules::slice_result` returns `signed: false` unconditionally (it
+//     exists precisely to keep BUG-21 from coming back), and
+//     `checker/widths/expr/lvalue.rs` types a bit-select as `Ty::Bit`;
+//   * `if`/`match` results come out of `Module::alloc_bits`, which is always
+//     unsigned, even though the checker forces both branches to one `Ty`
+//     (`emit_verilog/kinds.rs` derives the mux's `Kind` from its branches).
+// ---------------------------------------------------------------------------
+
+/// B1: a bit-select with a RUNTIME index lowers as `base >> i` then bit 0.
+/// The shift keeps its left operand's signedness (`shift_result`), but the
+/// bit-select on top of it is a bit — always unsigned. `a = 0x80`, `i = 7`
+/// selects the sign bit, so `extend(a[i], 8)` is `0x01`; sign-extending it
+/// (the bug) gives `0xFF`.
+#[test]
+fn a_runtime_bit_select_is_unsigned_even_over_a_signed_base() {
+    let src = "module M {\n  in a: signed[8]\n  in i: bits[3]\n  out o: bits[8]\n  o = extend(a[i], 8)\n}\n";
+    let module = lower_valid(src);
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("a", crate::value::Val::new(0x80, 8, true));
+    ex.set_input("i", crate::value::Val::new(7, 3, false));
+    ex.tick();
+    assert_eq!(
+        ex.get_output("o").bits,
+        crate::bits::Bits::Small(0x01),
+        "a[i] is a BIT (unsigned) even when `a` is signed — extend must zero-pad"
+    );
+}
+
+/// B2: a constant-index bit-select and a slice are both unsigned too, for
+/// the same reason. `a = 0xFF` (i.e. `-1`): `a[7:4]` is `0x0F` and `a[7]` is
+/// `0x01` once extended; inheriting `a`'s sign would give `0xFF` for both.
+#[test]
+fn a_slice_and_a_constant_bit_select_are_unsigned_even_over_a_signed_base() {
+    let src = "module M {\n  in a: signed[8]\n  out hi: bits[8]\n  out top: bits[8]\n  hi = extend(a[7:4], 8)\n  top = extend(a[7], 8)\n}\n";
+    let module = lower_valid(src);
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("a", crate::value::Val::new(0xFF, 8, true));
+    ex.tick();
+    assert_eq!(
+        ex.get_output("hi").bits,
+        crate::bits::Bits::Small(0x0F),
+        "a[7:4] is unsigned bits[4] — extend must zero-pad, not sign-extend"
+    );
+    assert_eq!(
+        ex.get_output("top").bits,
+        crate::bits::Bits::Small(0x01),
+        "a[7] is a BIT — extend must zero-pad"
+    );
+}
+
+/// B2, the comparison shape: `min` over two slices must compare UNSIGNED.
+/// `a = 0xF0`/`b = 0x70` slice to `15` and `7`; a signed 4-bit reading makes
+/// `15` look like `-1` and wrongly calls it the smaller.
+#[test]
+fn min_over_two_slices_of_signed_bases_compares_unsigned() {
+    let src = "module M {\n  in a: signed[8]\n  in b: signed[8]\n  out o: bits[4]\n  o = min(a[7:4], b[7:4])\n}\n";
+    let module = lower_valid(src);
+    assert!(
+        module
+            .cells
+            .iter()
+            .any(|c| matches!(c.kind, crate::ir::CellKind::Lt { signed: false })),
+        "a slice is unsigned, so min over two slices must use an UNSIGNED Lt"
+    );
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("a", crate::value::Val::new(0xF0, 8, true));
+    ex.set_input("b", crate::value::Val::new(0x70, 8, true));
+    ex.tick();
+    assert_eq!(
+        ex.get_output("o").bits,
+        crate::bits::Bits::Small(7),
+        "min(15, 7) over unsigned 4-bit slices must be 7"
+    );
+}
+
+/// B3: an `if`-expression's result carries its branches' signedness — the
+/// checker unifies both branches to one `Ty`, so there is a single flag to
+/// take. Without it `extend` zero-pads a negative value (finding 1's shape)
+/// and `-`/`abs` skip their growth bit (finding 4's shape, a
+/// `PortWidthMismatch` that `lower_valid` catches).
+#[test]
+fn an_if_expressions_result_inherits_its_branches_signedness() {
+    let src = "module M {\n  in s: bits[1]\n  in a: signed[8]\n  in b: signed[8]\n  out e: signed[16]\n  out n: signed[9]\n  out v: signed[9]\n  e = extend(if s == 1 { a } else { b }, 16)\n  n = -(if s == 1 { a } else { b })\n  v = abs(if s == 1 { a } else { b })\n}\n";
+    let module = lower_valid(src);
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("s", crate::value::Val::new(1, 1, false));
+    ex.set_input("a", crate::value::Val::new(0xFF, 8, true)); // -1
+    ex.set_input("b", crate::value::Val::new(0, 8, true));
+    ex.tick();
+    assert_eq!(
+        ex.get_output("e").bits,
+        crate::bits::Bits::Small(0xFFFF),
+        "extend of a signed if-expression must sign-extend -1"
+    );
+    assert_eq!(
+        ex.get_output("n").bits,
+        crate::bits::Bits::Small(1),
+        "-(-1) must be 1"
+    );
+    assert_eq!(
+        ex.get_output("v").bits,
+        crate::bits::Bits::Small(1),
+        "abs(-1) must be 1"
+    );
+}
+
+/// B3's `match` half — `lower_match` folds its mux chain arm by arm, so the
+/// flag has to survive every step, not just a single two-way mux.
+#[test]
+fn a_match_expressions_result_inherits_its_arms_signedness() {
+    let src = "module M {\n  in s: bits[2]\n  in a: signed[8]\n  in b: signed[8]\n  out e: signed[16]\n  e = extend(match s {\n    0 => a\n    1 => b\n    _ => a\n  }, 16)\n}\n";
+    let module = lower_valid(src);
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("s", crate::value::Val::new(1, 2, false));
+    ex.set_input("a", crate::value::Val::new(0, 8, true));
+    ex.set_input("b", crate::value::Val::new(0xFF, 8, true)); // -1
+    ex.tick();
+    assert_eq!(
+        ex.get_output("e").bits,
+        crate::bits::Bits::Small(0xFFFF),
+        "extend of a signed match expression must sign-extend -1"
+    );
+}
+
+// ---------------------------------------------------------------------
+// Fix round 3 — the "a compile-time constant has no signedness of its
+// own" family (F1-F4). Every one of these is the SAME disease: a value
+// whose checker `Ty` is signed loses that flag in the IR because one
+// side/branch of it is a literal, and `lower_const` builds every literal
+// unsigned. See the round-3 section of
+// `.superpowers/sdd/2026-09-10-ir-base-gap-closure.local/task-6-report.md`.
+// ---------------------------------------------------------------------
+
+/// F1 — an ordering comparison against a literal whose NATURAL width
+/// already equals its sibling's. The literal-resize path (which stamps
+/// the sibling's sign) never fires, so `cmp_signed` has to come from the
+/// sibling directly rather than from "both sides are signed".
+#[test]
+fn a_comparison_against_a_same_width_literal_is_still_signed() {
+    let src = "module M {\n  in a: signed[8]\n  out o: bit\n  o = a < -128\n}\n";
+    let module = lower_valid(src);
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("a", crate::value::Val::new(0, 8, true));
+    ex.tick();
+    assert_eq!(
+        ex.get_output("o").bits,
+        crate::bits::Bits::Small(0),
+        "0 < -128 is false; read unsigned it would be 0 < 128 == true"
+    );
+    ex.set_input("a", crate::value::Val::new(0xFF, 8, true)); // -1
+    ex.tick();
+    assert_eq!(
+        ex.get_output("o").bits,
+        crate::bits::Bits::Small(0),
+        "-1 < -128 is false"
+    );
+}
+
+/// F2 — `if c { x } else { 0 }`, the stock clamp/default idiom. The
+/// literal branch is unsigned, so a `&&` merge zeroed the whole mux's
+/// flag and `extend` zero-padded a genuinely signed value.
+#[test]
+fn an_if_expression_with_a_literal_branch_keeps_the_other_branchs_sign() {
+    let src = "module M {\n  in s: bit\n  in a: signed[8]\n  out e: signed[16]\n  \
+               e = extend(if s { a } else { 0 }, 16)\n}\n";
+    let module = lower_valid(src);
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("s", crate::value::Val::new(1, 1, false));
+    ex.set_input("a", crate::value::Val::new(0xFF, 8, true)); // -1
+    ex.tick();
+    assert_eq!(
+        ex.get_output("e").bits,
+        crate::bits::Bits::Small(0xFFFF),
+        "the `then` branch is signed[8] = -1, so extend must sign-extend"
+    );
+    ex.set_input("s", crate::value::Val::new(0, 1, false));
+    ex.tick();
+    assert_eq!(
+        ex.get_output("e").bits,
+        crate::bits::Bits::Small(0),
+        "the literal branch still reads 0"
+    );
+}
+
+/// F2's `match` half — same shape, folded arm by arm.
+#[test]
+fn a_match_with_a_literal_arm_keeps_the_other_arms_sign() {
+    let src = "module M {\n  in s: bits[2]\n  in a: signed[8]\n  out e: signed[16]\n  \
+               e = extend(match s {\n    0 => 0\n    1 => a\n    _ => 0\n  }, 16)\n}\n";
+    let module = lower_valid(src);
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("s", crate::value::Val::new(1, 2, false));
+    ex.set_input("a", crate::value::Val::new(0xFF, 8, true)); // -1
+    ex.tick();
+    assert_eq!(
+        ex.get_output("e").bits,
+        crate::bits::Bits::Small(0xFFFF),
+        "a match whose other arms are literals is still signed[8]"
+    );
+}
+
+/// F3 — a `fn` whose result is effectively a literal. There is no
+/// sibling to inherit from here: the signedness is the fn's DECLARED
+/// return type, which `lower_fn_stmts` never stamped.
+#[test]
+fn a_fn_returning_a_literal_carries_its_declared_return_signedness() {
+    let src = "fn lo(x: signed[8]) -> signed[8] {\n  if x < 0 {\n    return -1\n  }\n  \
+               x\n}\n\nmodule M {\n  in a: signed[8]\n  out e: signed[16]\n  \
+               e = extend(lo(a), 16)\n}\n";
+    let module = lower_valid(src);
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("a", crate::value::Val::new(0xF0, 8, true)); // -16 -> -1
+    ex.tick();
+    assert_eq!(
+        ex.get_output("e").bits,
+        crate::bits::Bits::Small(0xFFFF),
+        "the fn declares `-> signed[8]`, so its literal `-1` return is signed"
+    );
+    ex.set_input("a", crate::value::Val::new(5, 8, true));
+    ex.tick();
+    assert_eq!(
+        ex.get_output("e").bits,
+        crate::bits::Bits::Small(5),
+        "the non-literal path still works"
+    );
+}
+
+/// F4 — a signed memory's read value. `checker/widths/expr/lvalue.rs`
+/// types `m[addr]` as `Ty::Signed(width)` when the memory's element type
+/// is signed, and `emit_verilog/kinds.rs` agrees; the IR read port was
+/// always allocated unsigned.
+#[test]
+fn a_signed_memorys_read_value_is_signed() {
+    let src = "module M {\n  clock clk\n  in we: bit\n  in addr: bits[2]\n  \
+               in wdata: signed[8]\n  out e: signed[16]\n  mem m: signed[8][4] = 0\n  \
+               on rise(clk) {\n    if we {\n      m[addr] <- wdata\n    }\n  }\n  \
+               e = extend(m[addr], 16)\n}\n";
+    let module = lower_valid(src);
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("we", crate::value::Val::new(1, 1, false));
+    ex.set_input("addr", crate::value::Val::new(2, 2, false));
+    ex.set_input("wdata", crate::value::Val::new(0xFF, 8, true)); // -1
+    ex.tick();
+    ex.tick();
+    assert_eq!(
+        ex.get_output("e").bits,
+        crate::bits::Bits::Small(0xFFFF),
+        "a signed[8] memory word reads back signed, so extend sign-extends -1"
+    );
+}
+
+/// Beyond the reported findings: a mux nested inside another mux, both
+/// with a literal branch. The flag has to survive every level.
+#[test]
+fn a_nested_literal_branch_mux_stays_signed_at_every_level() {
+    let src = "module M {\n  in s: bit\n  in t: bit\n  in a: signed[8]\n  out e: signed[16]\n  \
+               e = extend(if s { if t { a } else { 0 } } else { 0 }, 16)\n}\n";
+    let module = lower_valid(src);
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("s", crate::value::Val::new(1, 1, false));
+    ex.set_input("t", crate::value::Val::new(1, 1, false));
+    ex.set_input("a", crate::value::Val::new(0xFF, 8, true));
+    ex.tick();
+    assert_eq!(ex.get_output("e").bits, crate::bits::Bits::Small(0xFFFF));
+}
+
+/// F8 — found by probing beyond the reported findings, and broken the same
+/// way F3 was: a `fn` ARGUMENT that is a compile-time constant took neither
+/// the parameter's declared width nor its signedness, so `ext(-1)` bound a
+/// 1-bit `1` to a `signed[8]` parameter.
+#[test]
+fn a_literal_fn_argument_takes_the_parameters_declared_width_and_sign() {
+    let src = "fn ext(x: signed[8]) -> signed[16] {\n  extend(x, 16)\n}\n\n\
+               module M {\n  in a: bit\n  out e: signed[16]\n  e = ext(-1)\n}\n";
+    let module = lower_valid(src);
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("a", crate::value::Val::new(0, 1, false));
+    ex.tick();
+    assert_eq!(ex.get_output("e").bits, crate::bits::Bits::Small(0xFFFF));
+}
+
+/// Beyond the reported findings (checked, already correct): reading an
+/// element out of a signed-element array parameter.
+#[test]
+fn an_array_element_read_keeps_the_elements_signedness() {
+    let src = "fn pick(vals: signed[8][4], i: bits[2]) -> signed[16] {\n  extend(vals[i], 16)\n}\n\n\
+               module M {\n  in a: signed[8]\n  in b: signed[8]\n  in i: bits[2]\n  \
+               out e: signed[16]\n  e = pick([a, b, a, b], i)\n}\n";
+    let module = lower_valid(src);
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("a", crate::value::Val::new(0xFF, 8, true));
+    ex.set_input("b", crate::value::Val::new(1, 8, true));
+    ex.set_input("i", crate::value::Val::new(0, 2, false));
+    ex.tick();
+    assert_eq!(
+        ex.get_output("e").bits,
+        crate::bits::Bits::Small(0xFFFF),
+        "vals[0] = -1"
+    );
+}
+
+/// `min`/`max` against a literal: the comparison was already signed (round
+/// 1), but the RESULT went through `push_mux_cell`, whose `&&` let the
+/// literal operand veto it — the clamp idiom, same disease as F2.
+#[test]
+fn min_max_against_a_literal_produce_a_signed_result() {
+    let src = "module M {\n  in a: signed[8]\n  out e: signed[16]\n  out f: signed[16]\n  \
+               e = extend(min(a, 0), 16)\n  f = extend(max(a, 0), 16)\n}\n";
+    let module = lower_valid(src);
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("a", crate::value::Val::new(0xFF, 8, true));
+    ex.tick();
+    assert_eq!(
+        ex.get_output("e").bits,
+        crate::bits::Bits::Small(0xFFFF),
+        "min(-1,0) = -1, sign-extended"
+    );
+    assert_eq!(
+        ex.get_output("f").bits,
+        crate::bits::Bits::Small(0),
+        "max(-1,0) = 0"
+    );
 }

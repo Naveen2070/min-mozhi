@@ -2037,11 +2037,11 @@ fn gen_ir_expr(
 /// lowered by Task 5/6")`. As of GAP-1 tasks 1-3 (`docs/audit/gaps.md`),
 /// `extend`/`trunc`/`signed`/`unsigned`/`encoding`/`nand`/`nor`/`xnor` lower
 /// for real, and that shared catch-all is gone: the `ExprKind::Call` match has
-/// no wildcard arm left at all. `min`/`max`/`abs` now hit their OWN
-/// `unimplemented!()` arm — explicitly refused, because they need signed
-/// interpretation `ir::Bits` has no v1 schema for — while `clog2`/
-/// `sync.double_flop`/`sync.pulse` hit `unreachable!()` arms, which means
-/// something different: they never survive to a checked `Design` at all.
+/// no wildcard arm left at all. As of Task 6, `min`/`max`/`abs` lower for
+/// real too (`Lt` + `Mux`, over the per-value `signed` flag `ir::Bits` now
+/// carries), so nothing in `ExprKind::Call` is refused any more except
+/// `clog2`/`sync.double_flop`/`sync.pulse`, which hit `unreachable!()` arms
+/// — a different thing entirely: they never survive to a checked `Design`.
 /// That was fatal for the existing generator specifically, because
 /// `extend(x, N)` IS its width machinery: `widen`, `clamp`'s fallback, every
 /// non-port leaf, `force_width` and `wrap_builtin` all render one. And
@@ -2074,8 +2074,8 @@ fn gen_ir_expr(
 ///   textually identical `m[0]` reads trip it), and every builtin call — a
 ///   generator design choice (no literals/width-conversion, see above), not a
 ///   lowering gap: `extend`/`trunc`/`signed`/`unsigned`/`encoding`/`nand`/
-///   `nor`/`xnor` do lower today; only `min`/`max`/`abs`/`clog2`/`sync.*`
-///   still don't.
+///   `nor`/`xnor`/`min`/`max`/`abs` all lower today; only `clog2`/`sync.*`
+///   don't, and those never reach `ir::lower` at all.
 ///
 /// Every one of those exclusions is an already-ruled, separately-tracked v1
 /// limitation, so the subset is a scope boundary rather than a workaround —

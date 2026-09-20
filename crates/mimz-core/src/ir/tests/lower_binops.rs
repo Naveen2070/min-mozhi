@@ -1,26 +1,9 @@
-use super::adder_design;
+use super::{adder_design, elaborate_src, lower_ok};
 use crate::ast::{Expr, ExprKind};
 use crate::elaborate::{Design, Signal};
-use crate::ir::{CellKind, Module, lower, validate};
+use crate::ir::{CellKind, lower, validate};
 use crate::span::Span;
 use std::collections::BTreeMap;
-
-/// Runs the real lex -> parse -> check -> elaborate_project pipeline over
-/// `src`, returning the elaborated `Design`. Shared by the `Coalesce`
-/// regression tests below — a hand-built `Design` would bypass `elaborate`
-/// entirely and prove nothing about bugs that live in that pass.
-fn elaborate_src(src: &str) -> Design {
-    let file = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
-    crate::checker::check(std::slice::from_ref(&file)).expect("checks clean");
-    crate::elaborate::elaborate_project(std::slice::from_ref(&file), None, &BTreeMap::new())
-        .expect("elaborates")
-}
-
-/// `elaborate_src` + `lower`, for tests that only care about the final
-/// `Module` (GAP-1 Task 6's own sign/width-divergence regressions).
-fn lower_ok(src: &str) -> Module {
-    lower(&elaborate_src(src))
-}
 
 #[test]
 fn lowers_wire_add_of_two_inputs_to_an_add_cell() {
@@ -695,9 +678,15 @@ fn a_negated_operand_now_makes_the_comparison_signed() {
 /// unsigned. The cast is a free reinterpret (`lower`'s `SignedCast` arm
 /// repoints at its argument's `Bits` and allocates nothing), so the pin stays
 /// the declared 8-bit width and the equal-width guard is satisfied honestly.
-/// Also pins the negative half of `expr_is_definitely_signed`'s `SignedCast`
-/// arm: the cast only counts over a bare identifier, because that is the only
-/// argument shape whose lowered width is provably a declared signal's width.
+/// Its negative half pins the other direction: an UNCAST comparison over the
+/// same non-identifier shape stays unsigned, so nothing in the `||` merge
+/// (see `lower_binop`'s `cmp_signed`) invents signedness that isn't there.
+/// (It used to wrap that shape in `signed(...)` and assert the comparison
+/// stayed UNSIGNED anyway — a claim about the deleted
+/// `expr_is_definitely_signed` heuristic, over a program the checker itself
+/// rejects: `fit` gives `200` an effective `signed` width of 9, so
+/// `signed(...) < 200` is E0405 against a `signed[8]` sibling and could never
+/// reach lowering. GAP-1 Task 6 round 3, F1.)
 #[test]
 fn a_signed_cast_over_an_identifier_makes_the_comparison_signed() {
     use crate::ast::{BinOp, Builtin};
@@ -713,11 +702,11 @@ fn a_signed_cast_over_an_identifier_makes_the_comparison_signed() {
         }
     }
 
-    // `y = signed(a) < signed(b)`; `z = signed(a +% b) < 200` — the second's
-    // cast argument is NOT a bare identifier, so NEITHER side proves
-    // signedness and it stays unsigned. (`a +% b` keeps its 8-bit width, so
-    // the literal `200`'s own 8-bit natural width would otherwise satisfy the
-    // equal-width guard — the same shape as the `-a < 200` hazard above.)
+    // `y = signed(a) < signed(b)`; `z = (a +% b) < 200` — no cast on the
+    // second, so neither side is signed and it stays unsigned. (`a +% b`
+    // keeps its 8-bit width, so the literal `200`'s own 8-bit natural width
+    // satisfies the equal-width guard — the same shape as the `-a < 200`
+    // hazard above, now with nothing signed anywhere in it.)
     let mut comb = BTreeMap::new();
     comb.insert(
         "y".to_string(),
@@ -735,14 +724,14 @@ fn a_signed_cast_over_an_identifier_makes_the_comparison_signed() {
         Expr {
             kind: ExprKind::Binary {
                 op: BinOp::Lt,
-                lhs: Box::new(signed_cast(Expr {
+                lhs: Box::new(Expr {
                     kind: ExprKind::Binary {
                         op: BinOp::AddWrap,
                         lhs: Box::new(super::ident("a")),
                         rhs: Box::new(super::ident("b")),
                     },
                     span: Span::default(),
-                })),
+                }),
                 rhs: Box::new(Expr {
                     kind: ExprKind::Int {
                         value: crate::bits::Bits::Small(200),
@@ -807,8 +796,9 @@ fn a_signed_cast_over_an_identifier_makes_the_comparison_signed() {
     );
     assert!(
         kinds.contains(&false),
-        "signed(<non-identifier>) must stay unsigned — its lowered width is \
-         not provably the checker's type width"
+        "an uncast comparison over the same non-identifier shape must stay \
+         unsigned — `cmp_signed`'s `||` merge only ever inherits a sign that \
+         one side genuinely has"
     );
 
     // a = 0xFF (-1), b = 0x01 (1): -1 < 1 is true under the signed reading,
