@@ -43,6 +43,56 @@ fn requires_matched_ab(op: BinOp) -> bool {
     )
 }
 
+/// Widens a SIGNED `bits` to `width` by replicating its MSB — the same
+/// sign-extension `Builtin::Extend` does, as pure net re-pointing with no
+/// cell. Narrowing is not this function's job: `width <= bits.width()`
+/// returns `bits` untouched.
+fn sign_extended(bits: Bits, width: u32) -> Bits {
+    debug_assert!(
+        bits.signed || width <= bits.width(),
+        "sign-extending an UNSIGNED value needs a zero constant, not MSB replication"
+    );
+    if width <= bits.width() {
+        return bits;
+    }
+    let msb = *bits
+        .nets
+        .last()
+        .expect("a zero-width value never reaches lowering");
+    let pad = vec![msb; (width - bits.width()) as usize];
+    Bits {
+        nets: [bits.nets, pad].concat(),
+        signed: bits.signed,
+    }
+}
+
+/// Whether `op` lets an untyped compile-time-constant operand ADAPT to its
+/// sibling's width and signedness — the union of the checker's
+/// `matched_ty` family (`requires_matched_ab` above, plus the `+%`/`-%`/`*%`
+/// wrapping ops) and its `adapt_lossless` family (`+`/`-`/`*`). Both give a
+/// `Ty::CtInt` operand the SIZED side's `Ty` outright, so lowering must
+/// re-size and re-sign the constant the same way.
+///
+/// `requires_matched_ab` is a narrower question — "must `a`/`b` end up the
+/// same width, on pain of a `validate` error" — and stays separate: the
+/// lossless ops legitimately take differently-sized REAL operands, they just
+/// don't take an un-adapted CONSTANT one. Gating the resize on the narrower
+/// predicate is exactly what left `a + (-3)` lowering its `-3` at a 2-bit
+/// natural width (GAP-1 Task 6 round 4, F6).
+///
+/// `Shl`/`Shr` are excluded on purpose: the right operand is a shift AMOUNT,
+/// not a sibling value — `width_rules::shift_result` derives `<<`'s growth
+/// from its width, so widening a constant amount to the shifted value's
+/// width would inflate the result for no reason. `Coalesce` never reaches
+/// lowering at all (see `lower_binop`).
+fn adapts_const_operand(op: BinOp) -> bool {
+    requires_matched_ab(op)
+        || matches!(
+            op,
+            BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::AddWrap | BinOp::SubWrap | BinOp::MulWrap
+        )
+}
+
 /// The three synthetic `env` keys a memory's write port occupies while
 /// `lower_seq_stmts` folds its `if`s. They live in the same key space as
 /// register names, and the `__mem_` prefix keeps them out of the way of
@@ -76,6 +126,22 @@ struct LowerCtx<'a> {
     /// panicking (the v1 ceiling this used to hit). Read ports live on
     /// `CellKind::Mem::read_ports`, not `Cell::pins` — see that field's doc.
     mem_read: HashMap<String, Vec<(Bits, Bits)>>,
+    /// `fn`-body `let` bindings whose value is a COMPILE-TIME CONSTANT,
+    /// folded to its value. `ast::LocalLet` carries no type annotation, so
+    /// the checker types `let m = 1` as an untyped `Ty::CtInt` that adapts
+    /// to whatever uses it — but in the IR `m` is an already-lowered `Bits`
+    /// in `locals`, an `Expr` no longer, so `is_const_foldable`/
+    /// `lower_expr_sized` cannot see through the binding on their own and
+    /// `v & m` reached `validate` as a 1-bit `Const` on an 8-bit pin (GAP-1
+    /// Task 6 round 4, systematic pass). Merging these into
+    /// `visible_consts` lets both see the value again.
+    ///
+    /// Scoped by save/restore around `lower_fn_stmts`'s own `Let` recursion,
+    /// so a nested or sibling call's identically-named binding can't leak.
+    /// `i128` (via `value::const_eval`, not `const_eval_wide`) to match
+    /// `design.consts`, which these are merged into — a `let` bound past
+    /// `i128` is not a shape v1 needs.
+    local_consts: BTreeMap<String, i128>,
     /// One TOP-LEVEL expression node's lowered result, keyed by the ADDRESS
     /// of its `Expr` node.
     ///
@@ -125,17 +191,28 @@ impl<'a> LowerCtx<'a> {
         // instead of its own natural width — the `debug_wrapper.mimz` shape
         // (`dbg_out = 0` inside a `const if` branch, folded away before a
         // `Design` exists, leaving `0` as the whole `comb` entry).
-        let declared_width = self
+        // The declared WIDTH and the declared SIGNEDNESS are one fact, applied
+        // together: `lower_expr_sized`'s const arms always build an UNSIGNED
+        // `ConstVal` (a `Ty::CtInt` has no sign of its own), so sizing without
+        // stamping left `wire w: signed[8] = -1` unsigned and a downstream
+        // `extend` zero-padded it (GAP-1 Task 6 round 4, F1). Stamping is
+        // unconditional — the declaration is the authority for a signal's kind
+        // here exactly as it already is for an input/reg/mem element below.
+        let declared = self
             .design
             .outputs
             .iter()
             .chain(&self.design.wires)
             .find(|s| s.name == name)
-            .map(|s| s.width.bits);
+            .map(|s| s.width);
         // Top-level signal resolution is never inside a `fn` body, so there
         // are no call-local bindings in scope here.
-        let bits = match declared_width {
-            Some(w) => self.lower_expr_sized(module, expr, None, None, w),
+        let bits = match declared {
+            Some(w) => {
+                let mut b = self.lower_expr_sized(module, expr, None, None, w.bits);
+                b.signed = w.signed;
+                b
+            }
             None => self.lower_expr(module, expr, None, None),
         };
         self.resolved.insert(name.to_string(), bits.clone());
@@ -181,15 +258,15 @@ impl<'a> LowerCtx<'a> {
     /// extend/truncate `ir::exec`'s own `Const`-cell evaluation uses, so a
     /// negative or over-128-bit folded value widens/narrows exactly as
     /// correctly as executing the constant would. `const_eval_wide` still
-    /// has no notion of `locals` (same as `const_eval`), so it inherits the
-    /// same `locals.is_none()` gate as before: inside an inlined `fn` body
-    /// it could otherwise silently resolve a LOCAL param/`let` name that
-    /// collides with an unrelated design-level const/param. Every real call
-    /// site today (`resolve()`'s comb driver, `ExprKind::Binary`'s siblings
-    /// reached from module-level seq/comb lowering) already passes
-    /// `locals: None`, so this costs nothing in practice; a compound
-    /// constant expression inside a `fn` body simply isn't re-sized —
-    /// today's pre-existing behaviour, not a regression.
+    /// has no notion of `locals` (same as `const_eval`), so it is handed
+    /// `visible_consts(locals)` rather than `design.consts` directly: inside
+    /// an inlined `fn` body it could otherwise silently resolve a LOCAL
+    /// param/`let` name that collides with an unrelated design-level
+    /// const/param, and hiding exactly those names makes it fail on them
+    /// instead. This USED to be a blanket `locals.is_none()` gate, which
+    /// also refused every honest compound constant inside a `fn` body —
+    /// `return -1` in a `-> signed[8]` fn then lowered at its operand's own
+    /// 1-bit natural width and returned `1` (GAP-1 Task 6 round 3, F6).
     fn lower_expr_sized(
         &mut self,
         module: &mut Module,
@@ -225,7 +302,7 @@ impl<'a> LowerCtx<'a> {
                     width: target_width,
                     signed: v < 0,
                 }),
-            _ if locals.is_none() => crate::value::const_eval_wide(e, &self.design.consts)
+            _ => crate::value::const_eval_wide(e, &self.visible_consts(locals))
                 .ok()
                 .map(|cv| {
                     let resized = crate::value::from_const_at_width(&cv, target_width, cv.signed);
@@ -235,7 +312,6 @@ impl<'a> LowerCtx<'a> {
                         signed: cv.signed,
                     }
                 }),
-            _ => None,
         };
         match folded {
             Some(cv) => self.lower_const(module, &cv, e.span),
@@ -262,11 +338,78 @@ impl<'a> LowerCtx<'a> {
                 self.design.consts.contains_key(name)
             }
             // Matches `lower_expr_sized`'s own fallback arm exactly —
-            // `const_eval_wide`, not `const_eval`, so this predicate and the
-            // resize it gates never disagree on what folds.
-            _ if locals.is_none() => crate::value::const_eval_wide(e, &self.design.consts).is_ok(),
-            _ => false,
+            // `const_eval_wide`, not `const_eval`, and the same
+            // `visible_consts` shadowing, so this predicate and the resize it
+            // gates never disagree on what folds.
+            _ => crate::value::const_eval_wide(e, &self.visible_consts(locals)).is_ok(),
         }
+    }
+
+    /// Lowers `e` as the SIBLING of an already-lowered `other` — a mux
+    /// branch opposite its other branch, a `match` arm opposite the arm
+    /// chain it folds into. The checker unifies both to one `Ty`, so an
+    /// untyped compile-time constant here adopts `other`'s width AND
+    /// signedness; anything else is already reconciled and lowers unchanged.
+    ///
+    /// Without this, `if c { a } else { -1 }` lowered its `-1` at its own
+    /// 1-bit natural width and the mux returned the raw literal `1` —
+    /// SILENTLY, because `validate`'s `Mux` rule only checked the `sel` pin
+    /// (GAP-1 Task 6 round 4, F2; the `a`/`b`-vs-`out` rule that makes this
+    /// class loud was added in the same round).
+    /// `other: None` means "no sibling with a real type exists" (every
+    /// branch/arm is itself constant), which degrades to plain `lower_expr`.
+    fn lower_sibling(
+        &mut self,
+        module: &mut Module,
+        e: &Expr,
+        other: Option<&Bits>,
+        locals: Option<&HashMap<String, Bits>>,
+        arrays: Option<&HashMap<String, u32>>,
+    ) -> Bits {
+        match other {
+            Some(o) if self.is_const_foldable(e, locals) => {
+                let (width, signed) = (o.width(), o.signed);
+                let mut bits = self.lower_expr_sized(module, e, locals, arrays, width);
+                bits.signed = signed;
+                bits
+            }
+            _ => self.lower_expr(module, e, locals, arrays),
+        }
+    }
+
+    /// `design.consts` with every name SHADOWED by an in-scope `fn`-body
+    /// local (param or `let`) removed. `const_eval_wide` has no notion of
+    /// `locals`, so without this a compound constant expression inside an
+    /// inlined `fn` body could silently resolve a LOCAL name that collides
+    /// with an unrelated design-level `const`/parameter. Hiding the
+    /// collisions makes `const_eval_wide` fail on exactly those expressions
+    /// (unknown identifier) instead, which is the "don't fold it" answer.
+    ///
+    /// This replaces the old blanket `locals.is_none()` gate, which refused
+    /// to fold ANY compound constant inside a `fn` body — so a signed fn's
+    /// `return -1` (an `Unary{Neg}`, not a bare `Int`, hence not covered by
+    /// the arms above) was lowered at its operand's own 1-bit natural width
+    /// and returned `1` instead of `-1` (GAP-1 Task 6 round 3, F6).
+    ///
+    /// Borrows in the common case — module-level lowering has no locals at
+    /// all, and a `fn` body whose locals shadow nothing clones nothing.
+    fn visible_consts(
+        &self,
+        locals: Option<&HashMap<String, Bits>>,
+    ) -> std::borrow::Cow<'_, BTreeMap<String, i128>> {
+        let shadows = locals.is_some_and(|l| l.keys().any(|k| self.design.consts.contains_key(k)));
+        if !shadows && self.local_consts.is_empty() {
+            return std::borrow::Cow::Borrowed(&self.design.consts);
+        }
+        let mut visible = self.design.consts.clone();
+        if let Some(l) = locals {
+            visible.retain(|k, _| !l.contains_key(k));
+        }
+        // AFTER the shadow removal: a `let` that both shadows a design-level
+        // `const` AND folds to a constant of its own must resolve to the
+        // LOCAL value, not the hidden design one.
+        visible.extend(self.local_consts.iter().map(|(k, v)| (k.clone(), *v)));
+        std::borrow::Cow::Owned(visible)
     }
 
     /// Lowers one expression to its `Bits`. `locals` carries the current
@@ -336,68 +479,66 @@ impl<'a> LowerCtx<'a> {
                 self.lower_const(module, &const_val, e.span)
             }
             ExprKind::Binary { op, lhs, rhs } => {
-                // A `Mul` literal operand sizes to the OTHER operand's
-                // declared width before the multiply, not its own natural
-                // width — mirrors the const-shift-amount fix's own
-                // call-site-level approach (GAP-1 Task 6, Step 5).
-                // `requires_matched_ab` deliberately excludes `Mul` (real
-                // inputs may legitimately differ in width, lossless growth),
-                // so this needs its own case rather than falling through to
-                // the literal-resize block below, which never fires for it.
-                let (mut a, mut b) = match (*op, &lhs.kind, &rhs.kind) {
-                    (BinOp::Mul, ExprKind::Int { .. }, _) => {
-                        let b = self.lower_expr(module, rhs, locals, arrays);
-                        let a = self.lower_expr_sized(module, lhs, locals, arrays, b.width());
-                        (a, b)
-                    }
-                    (BinOp::Mul, _, ExprKind::Int { .. }) => {
-                        let a = self.lower_expr(module, lhs, locals, arrays);
-                        let b = self.lower_expr_sized(module, rhs, locals, arrays, a.width());
-                        (a, b)
-                    }
-                    _ => (
+                let (c_lhs, c_rhs) = (
+                    self.is_const_foldable(lhs, locals),
+                    self.is_const_foldable(rhs, locals),
+                );
+                // Exactly ONE side being a compile-time constant (a bare
+                // literal, a const/param identifier, or a larger constant
+                // expression — see `is_const_foldable`) is the adapting case:
+                // the checker types it `Ty::CtInt`, which has neither a width
+                // nor a signedness of its own and simply BECOMES the sized
+                // side's `Ty` (`matched_ty` for the comparison/bitwise/wrap
+                // family, `adapt_lossless` for `+`/`-`/`*`). So the real side
+                // is lowered first and the constant side is lowered ONCE,
+                // already at that width — `lower_expr`'s own arms would
+                // otherwise size it at its NATURAL/arithmetic-growth width,
+                // and re-lowering it afterwards would leave the first,
+                // wrongly-sized `Const` cell orphaned in the netlist.
+                //
+                // The sign stamp matters because `lower_expr_sized`'s const
+                // arms always build an UNSIGNED `ConstVal`; `lower_binop`'s
+                // `out_signed`/`cmp_signed` and `ir::exec`'s sign-aware
+                // arithmetic all read these two flags. Before round 4 this
+                // whole block was gated on `requires_matched_ab`, so a
+                // constant operand of a LOSSLESS op was never sized or signed
+                // at all — `a + (-3)` lowered its `-3` at a 2-bit natural
+                // width (GAP-1 Task 6 round 4, F6).
+                //
+                // `is_const_foldable`, not a bare `ExprKind::Int` pattern:
+                // the narrower shape `Mul` used to test missed `a * -1` (an
+                // `Unary{Neg}`) and `a * K` (a named `const`), both of which
+                // then hit a `PortWidthMismatch` at `validate` on a
+                // checker-valid program (F5).
+                let adapts = adapts_const_operand(*op);
+                let (mut a, b) = if adapts && c_lhs && !c_rhs {
+                    let b = self.lower_expr(module, rhs, locals, arrays);
+                    let mut a = self.lower_expr_sized(module, lhs, locals, arrays, b.width());
+                    a.signed = b.signed;
+                    (a, b)
+                } else if adapts && c_rhs && !c_lhs {
+                    let a = self.lower_expr(module, lhs, locals, arrays);
+                    let mut b = self.lower_expr_sized(module, rhs, locals, arrays, a.width());
+                    b.signed = a.signed;
+                    (a, b)
+                } else {
+                    (
                         self.lower_expr(module, lhs, locals, arrays),
                         self.lower_expr(module, rhs, locals, arrays),
-                    ),
+                    )
                 };
-                // A width mismatch here can only be a compile-time-constant
-                // expression (a bare literal, a const/param identifier, or a
-                // larger constant expression built from those — see
-                // `is_const_foldable`) on one side: the checker's untyped
-                // `Ty::CtInt`, sized by `lower_expr`'s own arms to its
-                // NATURAL/arithmetic-growth width rather than the sibling's.
-                // Every other shape is already reconciled to matching widths
-                // by the checker. Re-lower whichever side IS const-foldable
-                // at the OTHER side's width — deliberately NOT "whichever
-                // side is narrower": a bare literal is always narrower than
-                // its sized sibling, but a constant EXPRESSION can come out
-                // WIDER instead (`lower_binop`'s arithmetic growth formulas
-                // apply the same whether or not the operands are literals),
-                // so testing width alone picks the wrong side for that
-                // shape (see `is_const_foldable`'s own doc). If NEITHER side
-                // is const-foldable, both `a`/`b` come back unchanged and
-                // the mismatch reaches `lower_binop`/`validate` untouched —
-                // a genuine checker/lowering disagreement, which stays a
-                // loud validation failure rather than a silent truncation.
-                if requires_matched_ab(*op) && a.width() != b.width() {
-                    if self.is_const_foldable(lhs, locals) {
-                        a = self.lower_expr_sized(module, lhs, locals, arrays, b.width());
-                        // An ordering comparison's untyped literal operand
-                        // inherits its sibling's SIGNEDNESS the same way the
-                        // checker's `Ty::CtInt` does (`matched_ty`) —
-                        // `lower_expr_sized`'s own literal arms always build
-                        // an unsigned `ConstVal`, so without this a resized
-                        // literal would force every such comparison unsigned
-                        // regardless of its true sibling's declared type.
-                        if matches!(op, BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge) {
-                            a.signed = b.signed;
-                        }
-                    } else if self.is_const_foldable(rhs, locals) {
-                        b = self.lower_expr_sized(module, rhs, locals, arrays, a.width());
-                        if matches!(op, BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge) {
-                            b.signed = a.signed;
-                        }
-                    }
+                // BOTH sides constant, in a position with no width context of
+                // its own (a `Concat` part, say — a sized position folds the
+                // whole expression through `lower_expr_sized` long before
+                // here). Neither side has a real type to adopt, so this only
+                // reconciles the two so the cell stays well-formed; it is the
+                // one path that can still orphan a natural-width `Const`.
+                // If NEITHER side is const-foldable the mismatch is a genuine
+                // checker/lowering disagreement and reaches `validate` as a
+                // loud failure, deliberately untouched.
+                if adapts && c_lhs && c_rhs && a.width() != b.width() {
+                    a = self.lower_expr_sized(module, lhs, locals, arrays, b.width());
+                    a.signed = b.signed;
                 }
                 let shl_const_amount = (*op == BinOp::Shl)
                     .then(|| crate::value::const_eval(rhs, &self.design.consts).ok())
@@ -409,9 +550,21 @@ impl<'a> LowerCtx<'a> {
                 // source `Expr` shapes — the two heuristic functions that used
                 // to do that (`expr_is_definitely_signed`/
                 // `unshadowed_signal_signed`) are gone (GAP-1 Task 6).
+                //
+                // `||`, not `&&` — the same rule `lower_binop`'s own
+                // `out_signed` and `Min`/`Max`'s `cmp_signed` already use, for
+                // the same reason: `matched_ty` (`checker/widths/ops/mod.rs`)
+                // forces two REAL operands to the identical `Kind` (E0403), so
+                // `||` and `&&` agree there; the only case they differ on is a
+                // compile-time-constant operand, which the checker gives NO
+                // signedness of its own (`Ty::CtInt` simply becomes the sized
+                // side's `Ty`) and which `lower_const` therefore always builds
+                // unsigned. `&&` let that unsigned literal veto its sibling's
+                // sign — and the stamp below only runs on a WIDTH mismatch, so
+                // `a < -128` over a `signed[8]` (literal already 8 bits wide,
+                // no resize) compared unsigned (GAP-1 Task 6 round 3, F1).
                 let cmp_signed = matches!(op, BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge)
-                    && a.signed
-                    && b.signed;
+                    && (a.signed || b.signed);
                 self.lower_binop(module, *op, a, b, shl_const_amount, cmp_signed, e.span)
             }
             ExprKind::Unary { op, expr } => {
@@ -432,10 +585,11 @@ impl<'a> LowerCtx<'a> {
                     UnOp::RedOr => (CellKind::RedOr, 1),
                     UnOp::RedXor => (CellKind::RedXor, 1),
                 };
-                // Negating a signed value stays signed; every other unary op
-                // here produces an unsigned result (bitwise/reduction ops
-                // aren't sign-meaningful).
-                let signed = matches!(op, UnOp::Neg) && a.signed;
+                // Negating a signed value stays signed, and so does `~` (the
+                // checker's `UnOp::BitNot` arm returns the operand's own `Ty`
+                // unchanged). The reductions and `!` are always 1-bit
+                // unsigned, so they never inherit.
+                let signed = matches!(op, UnOp::Neg | UnOp::BitNot) && a.signed;
                 let out = self.push_unary_cell(module, kind, a, out_width, e.span);
                 Bits {
                     nets: out.nets,
@@ -466,38 +620,66 @@ impl<'a> LowerCtx<'a> {
                 let lo_val = crate::value::const_eval(lo, &self.design.consts)
                     .expect("checker guarantees slice bounds const-fold")
                     as usize;
-                Bits {
-                    nets: base_bits.nets[lo_val..=hi_val].to_vec(),
-                    signed: base_bits.signed,
-                }
+                // A slice is UNSIGNED whatever its base was —
+                // `width_rules::slice_result` returns `signed: false`
+                // unconditionally (the single shared rule that keeps BUG-21
+                // from coming back), and `emit_verilog/kinds.rs` agrees. It
+                // does NOT inherit `base_bits.signed`.
+                Bits::unsigned(base_bits.nets[lo_val..=hi_val].to_vec())
             }
+            // Both branches of an `if`-expression are unified to one `Ty` by
+            // the checker, so `push_mux_cell`'s `a.signed || b.signed` is
+            // exactly the branches' shared signedness (`emit_verilog/
+            // kinds.rs` derives the same `Kind` the same way) — see that
+            // helper's own doc for why a constant branch needs `||`.
             ExprKind::IfExpr { cond, then, els } => {
                 let sel = self.lower_expr(module, cond, locals, arrays);
-                let a = self.lower_expr(module, then, locals, arrays);
-                let b = self.lower_expr(module, els, locals, arrays);
-                let out_width = a.width().max(b.width());
-                let out = module.alloc_bits(out_width, None);
-                module.cells.push(Cell {
-                    kind: CellKind::Mux,
-                    pins: [("sel", sel), ("a", a), ("b", b), ("out", out.clone())]
-                        .into_iter()
-                        .collect(),
-                    span: e.span,
-                });
-                out
+                // Lower the NON-constant branch first so the constant one has
+                // a real sibling to adopt — `lower_sibling`'s whole job (F2).
+                // Two REAL branches are already reconciled by the checker, and
+                // two CONSTANT branches have no sibling to adopt from at all,
+                // so both of those fall through unchanged.
+                let (a, b) = match (
+                    self.is_const_foldable(then, locals),
+                    self.is_const_foldable(els, locals),
+                ) {
+                    (true, false) => {
+                        let b = self.lower_expr(module, els, locals, arrays);
+                        let a = self.lower_sibling(module, then, Some(&b), locals, arrays);
+                        (a, b)
+                    }
+                    (false, true) => {
+                        let a = self.lower_expr(module, then, locals, arrays);
+                        let b = self.lower_sibling(module, els, Some(&a), locals, arrays);
+                        (a, b)
+                    }
+                    _ => (
+                        self.lower_expr(module, then, locals, arrays),
+                        self.lower_expr(module, els, locals, arrays),
+                    ),
+                };
+                self.push_mux_cell(module, sel, a, b, e.span)
             }
             // `base[i]` is dual-use: a full-width memory-word read when
             // `base` names a `design.mems` entry, a single-bit select
             // otherwise. Only the name tells them apart — the parser can't,
             // and the width checker branches on exactly this same test.
             ExprKind::Index { base, index } if self.indexed_mem(base).is_some() => {
-                let (mem, width) = self.indexed_mem(base).unwrap();
+                let (mem, width, signed) = self.indexed_mem(base).unwrap();
+                let addr_width = self
+                    .mem_kind(&mem)
+                    .expect("indexed_mem already matched this memory")
+                    .1;
                 // A repeat encounter of THIS read node never gets here —
                 // `expr_memo` intercepts it above. So reaching the
                 // comparison below means a genuinely distinct read site (or
                 // a re-inlined `fn` body, where the address really can
                 // differ per call).
-                let addr = self.lower_expr(module, index, locals, arrays);
+                // A CONSTANT address (`m[0]`) has no width of its own — size
+                // it to the memory's own `clog2(depth)` address width so
+                // every read port and the write port agree, instead of each
+                // literal's natural width (round 4 systematic pass).
+                let addr = self.lower_expr_sized(module, index, locals, arrays, addr_width);
                 let ports = self.mem_read.entry(mem.clone()).or_default();
                 // A DIFFERENT read site landing on the same memory. Same
                 // LOWERED address: share that port. Different address: grow
@@ -506,7 +688,13 @@ impl<'a> LowerCtx<'a> {
                 match ports.iter().find(|(prev, _)| *prev == addr) {
                     Some((_, rdata)) => rdata.clone(),
                     None => {
-                        let rdata = module.alloc_bits(width, Some(&mem));
+                        let mut rdata = module.alloc_bits(width, Some(&mem));
+                        // The read value's kind is the memory's ELEMENT kind
+                        // (`indexed_mem`'s doc cites both the checker and the
+                        // emitter); `alloc_bits` is always unsigned, so a
+                        // `mem m: signed[N][D]` read back zero-extended
+                        // (GAP-1 Task 6 round 3, F4).
+                        rdata.signed = signed;
                         ports.push((addr, rdata.clone()));
                         rdata
                     }
@@ -568,21 +756,7 @@ impl<'a> LowerCtx<'a> {
                                     1,
                                     e.span,
                                 );
-                                let out_width = elem.width().max(acc.width());
-                                let out = module.alloc_bits(out_width, None);
-                                module.cells.push(Cell {
-                                    kind: CellKind::Mux,
-                                    pins: [
-                                        ("sel", eq),
-                                        ("a", elem),
-                                        ("b", acc),
-                                        ("out", out.clone()),
-                                    ]
-                                    .into_iter()
-                                    .collect(),
-                                    span: e.span,
-                                });
-                                acc = out;
+                                acc = self.push_mux_cell(module, eq, elem, acc, e.span);
                             }
                             acc
                         }
@@ -600,10 +774,14 @@ impl<'a> LowerCtx<'a> {
                     // machinery of its own.
                     let base_bits = self.lower_expr(module, base, locals, arrays);
                     match crate::value::const_eval(index, &self.design.consts) {
-                        Ok(i) => Bits {
-                            nets: vec![base_bits.nets[i as usize]],
-                            signed: base_bits.signed,
-                        },
+                        // A bit-select is a BIT: unsigned whatever the base
+                        // was (`checker/widths/expr/lvalue.rs` types it
+                        // `Ty::Bit`, `width_rules::slice_result` returns
+                        // `signed: false`). Same for the runtime case below —
+                        // it rides on a `Shr`, which DOES keep its left
+                        // operand's signedness, so the 1-bit result has to
+                        // drop that flag explicitly.
+                        Ok(i) => Bits::unsigned(vec![base_bits.nets[i as usize]]),
                         Err(_) => {
                             let idx_bits = self.lower_expr(module, index, locals, arrays);
                             let shifted = self.lower_binop(
@@ -615,10 +793,7 @@ impl<'a> LowerCtx<'a> {
                                 false,
                                 e.span,
                             );
-                            Bits {
-                                nets: vec![shifted.nets[0]],
-                                signed: shifted.signed,
-                            }
+                            Bits::unsigned(vec![shifted.nets[0]])
                         }
                     }
                 }
@@ -652,6 +827,16 @@ impl<'a> LowerCtx<'a> {
                 // array branch above.
                 let mut call_locals: HashMap<String, Bits> = HashMap::new();
                 let mut call_arrays: HashMap<String, u32> = HashMap::new();
+                // A parameter's DECLARED type is the argument's context, the
+                // same way a fn's declared return type is its result's: an
+                // argument that is a compile-time constant carries neither a
+                // width nor a sign of its own (`Ty::CtInt`), so binding it
+                // with a plain `lower_expr` handed the callee a literal at its
+                // own natural width AND unsigned — `ext(-1)` for a
+                // `x: signed[8]` param bound a 1-bit `1` (GAP-1 Task 6 round
+                // 3, F8, found by probing beyond the reported findings). A
+                // non-constant argument is already reconciled by the checker,
+                // so `lower_expr_sized` falls straight through for it.
                 for (param, arg) in func.params.iter().zip(args) {
                     if matches!(param.ty, Type::Array { .. }) {
                         let ExprKind::ArrayLit(elems) = &arg.kind else {
@@ -664,31 +849,43 @@ impl<'a> LowerCtx<'a> {
                                 arg.kind
                             );
                         };
+                        let Type::Array { elem, .. } = &param.ty else {
+                            unreachable!("just matched Type::Array");
+                        };
                         for (i, el) in elems.iter().enumerate() {
-                            call_locals.insert(
-                                format!("{}_{i}", param.name.name),
-                                self.lower_expr(module, el, locals, arrays),
-                            );
+                            let bound =
+                                self.lower_param_arg(module, el, elem, locals, arrays, func.span);
+                            call_locals.insert(format!("{}_{i}", param.name.name), bound);
                         }
                         call_arrays.insert(param.name.name.clone(), elems.len() as u32);
                     } else {
-                        call_locals.insert(
-                            param.name.name.clone(),
-                            self.lower_expr(module, arg, locals, arrays),
-                        );
+                        let bound =
+                            self.lower_param_arg(module, arg, &param.ty, locals, arrays, func.span);
+                        call_locals.insert(param.name.name.clone(), bound);
                     }
                 }
-                let (ret_width, _ret_signed) =
+                let (ret_width, ret_signed) =
                     crate::value::type_width(&func.ret, &self.design.consts, func.span)
                         .expect("checker guarantees a fn's declared return type resolves");
-                self.lower_fn_stmts(
+                let mut out = self.lower_fn_stmts(
                     module,
                     &func.stmts,
                     &func.tail,
                     &call_locals,
                     Some(&call_arrays),
                     ret_width,
-                )
+                );
+                // A call's `Ty` IS the fn's DECLARED return type — the checker
+                // forces the body to match it, so this is an assignment, not a
+                // merge. It matters because a return/tail path can be a bare
+                // compile-time constant (`if x < 0 { return -1 }`), which has
+                // no signedness of its own and no sibling to inherit one from:
+                // `lower_expr_sized` sizes it to `ret_width` but `lower_const`
+                // always builds it unsigned, so the call came back disagreeing
+                // with `-> signed[N]` and a downstream `extend` zero-padded it
+                // (GAP-1 Task 6 round 3, F3).
+                out.signed = ret_signed;
+                out
             }
             ExprKind::Call { func, args } => match func {
                 Builtin::Extend => {
@@ -774,9 +971,9 @@ impl<'a> LowerCtx<'a> {
                     self.push_unary_cell(module, CellKind::LogicNot, reduced, 1, e.span)
                 }
                 Builtin::Min | Builtin::Max | Builtin::Abs => {
-                    let a = self.lower_expr(module, &args[0], locals, arrays);
                     match func {
                         Builtin::Abs => {
+                            let a = self.lower_expr(module, &args[0], locals, arrays);
                             // Lossless like unary `-`: `abs(MIN)` needs the
                             // extra bit — the checker types it
                             // `Signed(n) -> Signed(n+1)`. The checker only
@@ -799,18 +996,106 @@ impl<'a> LowerCtx<'a> {
                                     .last()
                                     .expect("checker guarantees a non-empty operand"),
                             ]);
+                            let a_signed = a.signed;
+                            // Both mux arms at `neg_width`: `-x` grew by a
+                            // bit, so the untouched `x` arm has to be
+                            // sign-extended to match. Semantically a no-op
+                            // (that arm is only selected when `x >= 0`, where
+                            // the replicated sign bit is 0), but it keeps the
+                            // `Mux`'s arms at its `out` width, which
+                            // `validate` now enforces for every mux (round 4
+                            // guard-rail).
+                            let a = sign_extended(a, neg_width);
                             let out = self.push_mux_cell(module, is_neg, neg, a, e.span);
                             Bits {
                                 nets: out.nets,
-                                signed: false, // |x| is never negative
+                                // The checker types `abs(x: signed[n])` as
+                                // `signed[n+1]`, so the IR flag says `signed`
+                                // too — the invariant is "`Bits::signed`
+                                // equals the checker's own `Ty` signedness",
+                                // not "this value could be negative". (It
+                                // can't: `|x|`'s top bit is always 0 in n+1
+                                // bits, so a downstream sign-extend and a
+                                // zero-extend agree here anyway.)
+                                signed: a_signed,
                             }
                         }
                         Builtin::Min | Builtin::Max => {
-                            let b = self.lower_expr(module, &args[1], locals, arrays);
+                            // `min`/`max` take a COMPARISON's operand rule
+                            // (`checker/widths/ops/builtins.rs` routes both
+                            // through `matched_ty`): equal width and
+                            // signedness, with an untyped literal adapting to
+                            // the sized side. So this needs exactly the same
+                            // const-foldable resize + sign inheritance
+                            // `ExprKind::Binary` already does for
+                            // `<`/`<=`/`>`/`>=` — without it `min(x, 3)`
+                            // feeds a 2-bit `Const` to an 8-bit `Lt` pin
+                            // (`WidthMismatch`, an invalid module), and
+                            // `max(x, 0)` — the stock clamp idiom — never
+                            // lowers at all. The foldable side is lowered ONCE,
+                            // already at its sibling's width — lowering it
+                            // naturally first and re-lowering it after would
+                            // orphan that first natural-width `Const` cell.
+                            let c0 = self.is_const_foldable(&args[0], locals);
+                            let c1 = self.is_const_foldable(&args[1], locals);
+                            let (mut a, mut b) = match (c0, c1) {
+                                (true, false) => {
+                                    let b = self.lower_expr(module, &args[1], locals, arrays);
+                                    let mut a = self.lower_expr_sized(
+                                        module,
+                                        &args[0],
+                                        locals,
+                                        arrays,
+                                        b.width(),
+                                    );
+                                    a.signed = b.signed;
+                                    (a, b)
+                                }
+                                (false, true) => {
+                                    let a = self.lower_expr(module, &args[0], locals, arrays);
+                                    let mut b = self.lower_expr_sized(
+                                        module,
+                                        &args[1],
+                                        locals,
+                                        arrays,
+                                        a.width(),
+                                    );
+                                    b.signed = a.signed;
+                                    (a, b)
+                                }
+                                _ => (
+                                    self.lower_expr(module, &args[0], locals, arrays),
+                                    self.lower_expr(module, &args[1], locals, arrays),
+                                ),
+                            };
+                            // Two literals (`min(3, 5)`) can still differ in
+                            // natural width; widen the narrower one. Two real
+                            // signals can't — the checker matched them.
+                            if c0 && c1 && a.width() != b.width() {
+                                if a.width() < b.width() {
+                                    a = self.lower_expr_sized(
+                                        module,
+                                        &args[0],
+                                        locals,
+                                        arrays,
+                                        b.width(),
+                                    );
+                                } else {
+                                    b = self.lower_expr_sized(
+                                        module,
+                                        &args[1],
+                                        locals,
+                                        arrays,
+                                        a.width(),
+                                    );
+                                }
+                            }
                             // Checker forbids mixed signed/unsigned operands
-                            // (`matched_ty`), so `a.signed == b.signed` in
-                            // practice; `&&` is the conservative fallback.
-                            let cmp_signed = a.signed && b.signed;
+                            // (`matched_ty`), so `a.signed == b.signed` for
+                            // two real signals; `||` covers the remaining
+                            // case, a literal whose `ConstVal` is always
+                            // built unsigned.
+                            let cmp_signed = a.signed || b.signed;
                             let a_lt_b = self.push_binary_cell(
                                 module,
                                 CellKind::Lt { signed: cmp_signed },
@@ -874,6 +1159,50 @@ impl<'a> LowerCtx<'a> {
         result
     }
 
+    /// A register's declared `Width`, if `name` is one.
+    fn reg_width(&self, name: &str) -> Option<crate::elaborate::Width> {
+        self.design
+            .regs
+            .iter()
+            .find(|r| r.name == name)
+            .map(|r| r.width)
+    }
+
+    /// A memory's `(element Width, address width)`, if `name` is one.
+    fn mem_kind(&self, name: &str) -> Option<(crate::elaborate::Width, u32)> {
+        self.design
+            .mems
+            .iter()
+            .find(|m| m.name == name)
+            .map(|m| (m.width, crate::checker::consteval::clog2_bits(m.depth)))
+    }
+
+    /// Lowers an `on`-block assignment's RHS at its TARGET's declared type.
+    /// A compile-time constant has no width or signedness of its own
+    /// (`Ty::CtInt`), and a sequential target — unlike a binary operator's
+    /// operand — has no sibling to adopt from: the DECLARATION is the only
+    /// context, so it is both sized and signed from it, exactly as
+    /// `lower_param_arg` already does for a `fn` parameter and `resolve` for
+    /// a wire/output. `None` (a target with no declared type on record)
+    /// falls back to plain `lower_expr`, today's behaviour.
+    fn lower_target_rhs(
+        &mut self,
+        module: &mut Module,
+        e: &Expr,
+        declared: Option<crate::elaborate::Width>,
+    ) -> Bits {
+        match declared {
+            // `on`-block lowering is always top-level, never inside a `fn`
+            // body — no call-local bindings in scope.
+            Some(w) => {
+                let mut bits = self.lower_expr_sized(module, e, None, None, w.bits);
+                bits.signed = w.signed;
+                bits
+            }
+            None => self.lower_expr(module, e, None, None),
+        }
+    }
+
     /// Classifies an assignment target. A bit-select/slice write to a
     /// plain signal is a `Target::BitSelect` — the actual per-bit merge
     /// happens in `lower_seq_stmts`'s `SeqStmt::Assign` arm, which still
@@ -894,13 +1223,21 @@ impl<'a> LowerCtx<'a> {
     /// be constant or a runtime signal); `second: Some(lo)` is a slice
     /// write (`q[hi:lo] <- v`), whose bounds ALWAYS const-fold (checker-
     /// enforced, same guarantee a plain `Slice` read relies on).
+    ///
+    /// `rhs` arrives as an `Expr`, not an already-lowered `Bits`: the target
+    /// SLOT's width (the slice's `hi - lo + 1`, or 1 bit) is the only width
+    /// context an untyped constant RHS has, and it is only knowable after
+    /// the bounds below are folded. Lowered without it, `q[7:4] <- 3` came
+    /// out as a 2-bit `Const` and the splice below panicked outright
+    /// (`clone_from_slice` length mismatch) — GAP-1 Task 6 round 4,
+    /// systematic pass.
     fn lower_bitselect_write(
         &mut self,
         module: &mut Module,
         base_bits: &Bits,
         first: &Expr,
         second: Option<&Expr>,
-        rhs: Bits,
+        rhs: &Expr,
         span: crate::span::Span,
     ) -> Bits {
         match second {
@@ -911,6 +1248,7 @@ impl<'a> LowerCtx<'a> {
                 let lo = crate::value::const_eval(lo, &self.design.consts)
                     .expect("checker guarantees a slice write's lo bound const-folds")
                     as usize;
+                let rhs = self.lower_expr_sized(module, rhs, None, None, (hi - lo + 1) as u32);
                 let mut nets = base_bits.nets.clone();
                 nets[lo..=hi].clone_from_slice(&rhs.nets);
                 Bits {
@@ -918,8 +1256,11 @@ impl<'a> LowerCtx<'a> {
                     signed: base_bits.signed,
                 }
             }
+            // A single-bit write's RHS is exactly 1 bit wide (the checker
+            // types `q[i]` as `Ty::Bit`).
             None => match crate::value::const_eval(first, &self.design.consts) {
                 Ok(i) => {
+                    let rhs = self.lower_expr_sized(module, rhs, None, None, 1);
                     let mut nets = base_bits.nets.clone();
                     nets[i as usize] = rhs.nets[0];
                     Bits {
@@ -928,6 +1269,7 @@ impl<'a> LowerCtx<'a> {
                     }
                 }
                 Err(_) => {
+                    let rhs = self.lower_expr_sized(module, rhs, None, None, 1);
                     let idx_bits = self.lower_expr(module, first, None, None);
                     let width = base_bits.width();
                     let mut nets = Vec::with_capacity(width as usize);
@@ -967,9 +1309,13 @@ impl<'a> LowerCtx<'a> {
         }
     }
 
-    /// `(name, word width)` of the memory `base` indexes, if `base` is a
-    /// bare identifier naming a `design.mems` entry.
-    fn indexed_mem(&self, base: &Expr) -> Option<(String, u32)> {
+    /// `(name, word width, word signedness)` of the memory `base` indexes, if
+    /// `base` is a bare identifier naming a `design.mems` entry. The
+    /// signedness is the memory's ELEMENT type: `checker/widths/expr/
+    /// lvalue.rs` types `m[addr]` as `Ty::Signed(width)` for a
+    /// `mem m: signed[N][D]`, and `emit_verilog/kinds.rs` reads the same
+    /// element `Kind` back out of its `mem_elem_decl_key` entry.
+    fn indexed_mem(&self, base: &Expr) -> Option<(String, u32, bool)> {
         let ExprKind::Ident(name) = &base.kind else {
             return None;
         };
@@ -977,7 +1323,7 @@ impl<'a> LowerCtx<'a> {
             .mems
             .iter()
             .find(|m| m.name == *name)
-            .map(|m| (m.name.clone(), m.width.bits))
+            .map(|m| (m.name.clone(), m.width.bits, m.width.signed))
     }
 
     /// Walks one `fn` body's statement list, evaluating against `locals`
@@ -987,6 +1333,31 @@ impl<'a> LowerCtx<'a> {
     /// statement or `tail` is ever reached, exactly like that renderer's
     /// `rest` threading — checker-guaranteed (E0812) so no reachability
     /// analysis is needed here either.
+    /// Lowers one `fn`-call argument against its parameter's DECLARED type
+    /// (`ty` is the scalar param's own type, or an array param's ELEMENT
+    /// type — arrays flatten to one binding per element). Sizes and signs it
+    /// the way the checker does: a `Ty::CtInt` argument has neither width nor
+    /// signedness of its own and simply becomes the parameter's type, while a
+    /// real signal is already reconciled and passes through untouched.
+    fn lower_param_arg(
+        &mut self,
+        module: &mut Module,
+        arg: &Expr,
+        ty: &Type,
+        locals: Option<&HashMap<String, Bits>>,
+        arrays: Option<&HashMap<String, u32>>,
+        span: crate::span::Span,
+    ) -> Bits {
+        let Ok((width, signed)) = crate::value::type_width(ty, &self.design.consts, span) else {
+            // Not a scalar bit-vector type (an enum-typed param, say) — no
+            // width/sign context to apply, so lower it as it stands.
+            return self.lower_expr(module, arg, locals, arrays);
+        };
+        let mut bits = self.lower_expr_sized(module, arg, locals, arrays, width);
+        bits.signed = signed;
+        bits
+    }
+
     fn lower_fn_stmts(
         &mut self,
         module: &mut Module,
@@ -1000,9 +1371,27 @@ impl<'a> LowerCtx<'a> {
             None => self.lower_expr_sized(module, tail, Some(locals), arrays, target_width),
             Some((FnStmt::Let(l), rest)) => {
                 let v = self.lower_expr(module, &l.value, Some(locals), arrays);
+                // A `let` bound to a compile-time constant stays visible AS a
+                // constant for the rest of the body, so a use site can size
+                // and sign it to its own context (`local_consts`). The
+                // lowered `Bits` is still bound too: a use with no width
+                // context of its own reads it straight out of `locals`.
+                let folded = crate::value::const_eval(&l.value, &self.visible_consts(Some(locals)))
+                    .ok()
+                    .filter(|_| self.is_const_foldable(&l.value, Some(locals)));
+                let name = l.name.name.clone();
+                let shadowed = match folded {
+                    Some(k) => self.local_consts.insert(name.clone(), k),
+                    None => self.local_consts.remove(&name),
+                };
                 let mut locals2 = locals.clone();
-                locals2.insert(l.name.name.clone(), v);
-                self.lower_fn_stmts(module, rest, tail, &locals2, arrays, target_width)
+                locals2.insert(name.clone(), v);
+                let out = self.lower_fn_stmts(module, rest, tail, &locals2, arrays, target_width);
+                match shadowed {
+                    Some(prev) => self.local_consts.insert(name, prev),
+                    None => self.local_consts.remove(&name),
+                };
+                out
             }
             Some((FnStmt::Return(e), _rest)) => {
                 self.lower_expr_sized(module, e, Some(locals), arrays, target_width)
@@ -1201,7 +1590,37 @@ impl<'a> LowerCtx<'a> {
             // dead code (compiler-flagged `unreachable_patterns`), not a
             // safety net for a future variant.
         };
-        let out = module.alloc_bits(out_width, None);
+        // The RESULT's own signedness, mirroring the checker's rules one for
+        // one (`checker/widths/ops/mod.rs` -> `width_rules`):
+        // - `lossless_result` (`+`/`-`/`*`) and `matched_result` (the `+%`
+        //   family, bitwise) both return the shared operand `Kind`, which the
+        //   checker has already forced to agree on signedness (E0403). `||`
+        //   rather than `&&` because ONE operand may be a re-sized literal,
+        //   which `lower_expr_sized` always builds unsigned (the checker's
+        //   `Ty::CtInt` adapts to its sibling instead).
+        // - `shift_result` keeps the LEFT operand's kind; a shift amount is
+        //   never signed.
+        // - comparisons and `&&`/`||` are always 1-bit unsigned.
+        // Without this, EVERY derived value came back `signed: false` and the
+        // Task 6 features that read the flag (`extend`, `min`/`max`, `abs`,
+        // unary `-`, comparison signedness) silently reverted to their
+        // unsigned reading whenever an operand was an expression rather than
+        // a bare signed port (GAP-1 Task 6 fix round, findings 1-4).
+        let out_signed = match op {
+            BinOp::Add
+            | BinOp::Sub
+            | BinOp::Mul
+            | BinOp::AddWrap
+            | BinOp::SubWrap
+            | BinOp::MulWrap
+            | BinOp::BitAnd
+            | BinOp::BitOr
+            | BinOp::BitXor => a.signed || b.signed,
+            BinOp::Shl | BinOp::Shr => a.signed,
+            _ => false,
+        };
+        let mut out = module.alloc_bits(out_width, None);
+        out.signed = out_signed;
         module.cells.push(Cell {
             kind,
             pins: [("a", a), ("b", b), ("out", out.clone())]
@@ -1230,25 +1649,34 @@ impl<'a> LowerCtx<'a> {
     ) -> Bits {
         let scrutinee_bits = self.lower_expr(module, scrutinee, locals, arrays);
         let n = arms.len();
-        let mut acc = self.lower_expr(module, &arms[n - 1].value, locals, arrays);
+        // The checker unifies every arm to ONE `Ty`, so the first arm with a
+        // real type of its own is the sibling every untyped-constant arm
+        // adopts its width and signedness from (`lower_sibling`). Without it
+        // each constant arm kept its own natural width and the fold returned
+        // the raw literal — `match s { 0 => a  _ => -1 }` gave `1`, not `0xFF`
+        // (GAP-1 Task 6 round 4, F2). If EVERY arm is constant there is no
+        // sibling to adopt, and `lower_sibling` degrades to plain `lower_expr`
+        // for all of them, exactly as before.
+        let reference = arms
+            .iter()
+            .position(|a| !self.is_const_foldable(&a.value, locals))
+            .map(|i| self.lower_expr(module, &arms[i].value, locals, arrays));
+        let mut acc = self.lower_sibling(
+            module,
+            &arms[n - 1].value,
+            reference.as_ref(),
+            locals,
+            arrays,
+        );
         for arm in arms[..n - 1].iter().rev() {
             let sel = self.lower_pattern_conds(module, &scrutinee_bits, &arm.patterns, span);
-            let arm_value = self.lower_expr(module, &arm.value, locals, arrays);
-            let out_width = arm_value.width().max(acc.width());
-            let out = module.alloc_bits(out_width, None);
-            module.cells.push(Cell {
-                kind: CellKind::Mux,
-                pins: [
-                    ("sel", sel),
-                    ("a", arm_value),
-                    ("b", acc),
-                    ("out", out.clone()),
-                ]
-                .into_iter()
-                .collect(),
-                span,
-            });
-            acc = out;
+            let arm_value =
+                self.lower_sibling(module, &arm.value, reference.as_ref(), locals, arrays);
+            // Every arm is unified to one `Ty` by the checker, so each fold
+            // step's `a.signed || b.signed` (inside `push_mux_cell`) carries
+            // the arms' shared signedness all the way down the chain — `||`
+            // so a constant arm can't veto it, see `push_mux_cell`'s doc.
+            acc = self.push_mux_cell(module, sel, arm_value, acc, span);
         }
         acc
     }
@@ -1392,11 +1820,20 @@ impl<'a> LowerCtx<'a> {
     /// register reset mux, and `Min`/`Max`/`Abs`'s own `Mux`, so this literal
     /// isn't written out a fourth time. `out`'s width is
     /// `a.width().max(b.width())`, matching every existing inline `Mux`
-    /// builder in this file; its `signed` is `a.signed && b.signed` — the
-    /// checker requires both arms of a real mux to agree on kind, so this is
-    /// exact whenever that holds, and conservatively `false` otherwise. A
-    /// caller that knows better (`Abs`'s "the result is never negative"
-    /// case) overrides the returned `Bits` afterward.
+    /// builder in this file; its `signed` is `a.signed || b.signed`.
+    ///
+    /// `||`, not `&&`: the checker unifies every branch/arm of a mux to ONE
+    /// `Ty` (`emit_verilog/kinds.rs` derives the mux's `Kind` from its
+    /// branches the same way), so two REAL branches always agree and the two
+    /// operators are equivalent there. They differ only when a branch is a
+    /// compile-time constant — `if c { x } else { 0 }`, the stock
+    /// clamp/default idiom, or `match s { 0 => 0  1 => a }` — which the
+    /// checker gives no signedness of its own (`Ty::CtInt` adopts the sized
+    /// branch's `Ty`) and which `lower_const` always builds unsigned. Under
+    /// `&&` that literal branch vetoed the whole mux's sign and a downstream
+    /// `extend` zero-padded a genuinely signed value (GAP-1 Task 6 round 3,
+    /// F2). A caller that knows better (`Abs`'s "the result is never
+    /// negative" case) overrides the returned `Bits` afterward.
     fn push_mux_cell(
         &mut self,
         module: &mut Module,
@@ -1407,7 +1844,7 @@ impl<'a> LowerCtx<'a> {
     ) -> Bits {
         let out_width = a.width().max(b.width());
         let mut out = module.alloc_bits(out_width, None);
-        out.signed = a.signed && b.signed;
+        out.signed = a.signed || b.signed;
         module.cells.push(Cell {
             kind: CellKind::Mux,
             pins: [("sel", sel), ("a", a), ("b", b), ("out", out.clone())]
@@ -1441,7 +1878,7 @@ impl<'a> LowerCtx<'a> {
                 if env.contains_key(&name.name) {
                     // `on`-block register lowering is always top-level, never
                     // inside a `fn` body — no call-local bindings in scope.
-                    let bits = self.lower_expr(module, val, None, None);
+                    let bits = self.lower_target_rhs(module, val, self.reg_width(&name.name));
                     env.insert(name.name.clone(), bits);
                 }
             }
@@ -1451,7 +1888,7 @@ impl<'a> LowerCtx<'a> {
                 SeqStmt::Assign { lhs, rhs } => match self.assign_target(lhs) {
                     Target::Signal(name) => {
                         if env.contains_key(&name) {
-                            let bits = self.lower_expr(module, rhs, None, None);
+                            let bits = self.lower_target_rhs(module, rhs, self.reg_width(&name));
                             env.insert(name, bits);
                         }
                     }
@@ -1467,8 +1904,27 @@ impl<'a> LowerCtx<'a> {
                             // whole-word `m[addr] <- v`, so the checker never
                             // lets a range reach a `design.mems` base.
                             let addr_expr = &lhs.index.as_ref().expect("MemWrite implies index").0;
-                            let addr = self.lower_expr(module, addr_expr, None, None);
-                            let data = self.lower_expr(module, rhs, None, None);
+                            // Both the ADDRESS and the DATA are constant-
+                            // context positions: the address adopts the
+                            // memory's own `clog2(depth)` address width, the
+                            // data its declared element type. Left at their
+                            // own natural widths, `m[0] <- -1` stored the raw
+                            // 1-bit literal `1` and the `Mem` cell's `waddr`
+                            // pin disagreed with its `raddr` pins (GAP-1
+                            // Task 6 round 4, F3).
+                            let (elem, addr_width) = match self.mem_kind(&mem) {
+                                Some((elem, aw)) => (Some(elem), Some(aw)),
+                                None => (None, None),
+                            };
+                            let addr = self.lower_target_rhs(
+                                module,
+                                addr_expr,
+                                addr_width.map(|bits| crate::elaborate::Width {
+                                    bits,
+                                    signed: false,
+                                }),
+                            );
+                            let data = self.lower_target_rhs(module, rhs, elem);
                             let one = self.lower_const(module, &const_val(1, 1), lhs.span);
                             env.insert(wen_k, one);
                             env.insert(waddr_k, addr);
@@ -1480,13 +1936,12 @@ impl<'a> LowerCtx<'a> {
                             let (first, second) =
                                 lhs.index.as_ref().expect("BitSelect implies index");
                             let base_bits = env[&name].clone();
-                            let rhs_bits = self.lower_expr(module, rhs, None, None);
                             let merged = self.lower_bitselect_write(
                                 module,
                                 &base_bits,
                                 first,
                                 second.as_ref(),
-                                rhs_bits,
+                                rhs,
                                 lhs.span,
                             );
                             env.insert(name, merged);
@@ -1516,20 +1971,13 @@ impl<'a> LowerCtx<'a> {
                             env.insert(name, a);
                             continue;
                         }
-                        let out_width = a.width().max(b.width());
-                        let out = module.alloc_bits(out_width, None);
-                        module.cells.push(Cell {
-                            kind: CellKind::Mux,
-                            pins: [
-                                ("sel", sel.clone()),
-                                ("a", a),
-                                ("b", b),
-                                ("out", out.clone()),
-                            ]
-                            .into_iter()
-                            .collect(),
-                            span: crate::span::Span::default(),
-                        });
+                        let out = self.push_mux_cell(
+                            module,
+                            sel.clone(),
+                            a,
+                            b,
+                            crate::span::Span::default(),
+                        );
                         env.insert(name, out);
                     }
                 }
@@ -1578,6 +2026,7 @@ pub fn lower(design: &Design) -> Module {
         design,
         resolved: HashMap::new(),
         mem_read: HashMap::new(),
+        local_consts: BTreeMap::new(),
         expr_memo: HashMap::new(),
     };
 
@@ -1727,8 +2176,21 @@ pub fn lower(design: &Design) -> Module {
 
         if let Some(reset_name) = design.resets.first() {
             let reset_sel = ctx.resolve(&mut module, reset_name);
-            let reset_const =
-                ctx.lower_const(&mut module, &reg.reset, crate::span::Span::default());
+            // `elaborate::module`'s `const_eval_wide(&reset_expr)` stores the
+            // reset value at the folded constant's OWN natural width and
+            // natural signedness, not the register's — so `reg q: signed[8] =
+            // -1` arrived here as the 1-bit constant `1`. Re-size it through
+            // the same sign-aware `from_const_at_width` `lower_expr_sized` and
+            // `ir::exec`'s own `Const` evaluation use (GAP-1 Task 6 round 4,
+            // F4).
+            let resized =
+                crate::value::from_const_at_width(&reg.reset, reg.width.bits, reg.reset.signed);
+            let reset_cv = crate::checker::consteval::ConstVal {
+                bits: resized.bits,
+                width: reg.width.bits,
+                signed: reg.width.signed,
+            };
+            let reset_const = ctx.lower_const(&mut module, &reset_cv, crate::span::Span::default());
             d_bits = ctx.push_mux_cell(
                 &mut module,
                 reset_sel,
@@ -1815,7 +2277,8 @@ pub fn lower(design: &Design) -> Module {
                     &const_val(0, addr_width),
                     crate::span::Span::default(),
                 );
-                let rdata = module.alloc_bits(mem.width.bits, Some(&mem.name));
+                let mut rdata = module.alloc_bits(mem.width.bits, Some(&mem.name));
+                rdata.signed = mem.width.signed; // same element-kind rule as a real read
                 vec![(raddr, rdata)]
             }
         };
