@@ -8,9 +8,13 @@
 //! cannot drift between the two sides of the differential test.
 //!
 //! v1 limitations, all deliberate:
-//! - **Unsigned only.** `ir::Bits` is a bare net vector with no signedness,
-//!   so every value read out of the netlist is rebuilt as unsigned. A design
-//!   whose source types are `signed` is not faithfully modeled here.
+//! - **Signedness is per-PIN, not per-net.** `get_bits` still rebuilds every
+//!   value out of the netlist as unsigned (a net is one raw bit), so each
+//!   cell arm that CARES re-stamps its operands from the `Bits::signed` flag
+//!   `lower` recorded on its own pins: the ordering comparisons
+//!   (`binop_signed`), `Neg`, and the arithmetic family (`arith`). Bitwise,
+//!   equality, shift and reduction cells are sign-independent by
+//!   construction and read their operands as raw bits.
 //! - **One global clock.** [`Executor::tick`] advances EVERY `Dff`/`Mem`
 //!   regardless of which clock net it references (and regardless of its
 //!   `edge`); the IR has no module-level clock list, and a genuinely
@@ -183,12 +187,20 @@ impl<'a> Executor<'a> {
             // no special case here.
             CellKind::Dff { .. } | CellKind::BlackBox { .. } => {}
 
-            CellKind::Add => self.binop(cell, BinOp::Add),
-            CellKind::Sub => self.binop(cell, BinOp::Sub),
-            CellKind::Mul => self.binop(cell, BinOp::Mul),
-            CellKind::AddWrap => self.binop(cell, BinOp::AddWrap),
-            CellKind::SubWrap => self.binop(cell, BinOp::SubWrap),
-            CellKind::MulWrap => self.binop(cell, BinOp::MulWrap),
+            // ARITHMETIC reads its operand pins' own `Bits::signed`: a
+            // lossless `+`/`-`/`*` grows past its operands' width, and
+            // `value::binary`'s `as_i128`/`wide_operands` sign-extend into
+            // that extra room exactly like Verilog's `$signed` does. Read as
+            // unsigned instead, `signed[8] a + (-3)` came back `0x0FD` in its
+            // 9-bit result where the AST kernel (and Icarus) say `0x1FD`
+            // (GAP-1 Task 6 round 4, F6 — the value-level root cause behind
+            // the lowering fix). See `arith_signed` for why it is `||`.
+            CellKind::Add => self.arith(cell, BinOp::Add),
+            CellKind::Sub => self.arith(cell, BinOp::Sub),
+            CellKind::Mul => self.arith(cell, BinOp::Mul),
+            CellKind::AddWrap => self.arith(cell, BinOp::AddWrap),
+            CellKind::SubWrap => self.arith(cell, BinOp::SubWrap),
+            CellKind::MulWrap => self.arith(cell, BinOp::MulWrap),
             CellKind::Shl => self.binop(cell, BinOp::Shl),
             CellKind::Shr => self.binop(cell, BinOp::Shr),
             CellKind::And => self.binop(cell, BinOp::BitAnd),
@@ -298,6 +310,22 @@ impl<'a> Executor<'a> {
     /// this panics rather than propagating a diagnostic.
     fn binop(&mut self, cell: &Cell, op: BinOp) {
         self.binop_signed(cell, op, false)
+    }
+
+    /// One arithmetic cell, evaluated with its operands re-tagged from the
+    /// signedness `lower` recorded on the PINS themselves.
+    ///
+    /// `a.signed || b.signed`, not `&&` — the same rule `lower_binop`'s own
+    /// `out_signed` uses, for the same reason: the checker forces two REAL
+    /// operands to one `Kind` (E0403), and the only case the two operators
+    /// differ on is a compile-time-constant operand, which has no signedness
+    /// of its own and adopts its sibling's. `&&` would let such a constant
+    /// veto a genuinely signed operation. Both operands are stamped with the
+    /// SAME flag, so `width_rules::lossless_result`'s mixed-signedness
+    /// rejection (which `binop_signed` panics on) can never fire here.
+    fn arith(&mut self, cell: &Cell, op: BinOp) {
+        let signed = cell.pins["a"].signed || cell.pins["b"].signed;
+        self.binop_signed(cell, op, signed)
     }
 
     /// `binop` with the operands re-tagged as two's-complement `signed`.
