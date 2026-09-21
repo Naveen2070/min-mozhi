@@ -13,8 +13,15 @@
 //!   cell arm that CARES re-stamps its operands from the `Bits::signed` flag
 //!   `lower` recorded on its own pins: the ordering comparisons
 //!   (`binop_signed`), `Neg`, and the arithmetic family (`arith`). Bitwise,
-//!   equality, shift and reduction cells are sign-independent by
-//!   construction and read their operands as raw bits.
+//!   equality and reduction cells are genuinely sign-independent by
+//!   construction. `Shr` reads its operand as raw bits too, but only because
+//!   `value::binary::shr` never sign-extends — this means an arithmetic
+//!   (sign-extending) right shift is not yet distinguished from a logical
+//!   one; see `docs/audit/gaps.md` GAP-1's `<<`/`>>` sub-gap.
+//! - **The arithmetic family's `signed` flag does not round-trip through IR
+//!   text** — neither printer emits it and `parse_line` always builds an
+//!   unsigned pin; see `docs/audit/gaps.md`'s "arithmetic family's `signed`
+//!   flag does not round-trip through IR text" sub-gap.
 //! - **One global clock.** [`Executor::tick`] advances EVERY `Dff`/`Mem`
 //!   regardless of which clock net it references (and regardless of its
 //!   `edge`); the IR has no module-level clock list, and a genuinely
@@ -324,6 +331,14 @@ impl<'a> Executor<'a> {
     /// SAME flag, so `width_rules::lossless_result`'s mixed-signedness
     /// rejection (which `binop_signed` panics on) can never fire here.
     fn arith(&mut self, cell: &Cell, op: BinOp) {
+        debug_assert_eq!(
+            cell.pins["a"].width(),
+            cell.pins["b"].width(),
+            "ir::exec: {op:?} operands have mismatched widths — lower.rs must \
+             resize both operands to match before emitting an arith cell, or \
+             two's-complement reinterpretation is unsound (see lower.rs's \
+             cmp_signed width guard for the same reasoning on comparisons)"
+        );
         let signed = cell.pins["a"].signed || cell.pins["b"].signed;
         self.binop_signed(cell, op, signed)
     }
