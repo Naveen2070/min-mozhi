@@ -282,9 +282,11 @@ What changed, precisely:
 b.signed` for the lossless/wrapping/bitwise families, `a.signed` for the
   shifts — the same rule `width_rules::lossless_result`/`matched_result`/
   `shift_result` give the checker), so a derived value's signedness reaches
-  `extend`/`min`/`max`/`abs`/unary `-`/comparison lowering correctly. Only
-  `CellKind::Mul` still has no `signed` flag, so a genuinely signed multiply
-  executes unsigned in `ir::exec` — pre-existing, separately scoped.
+  `extend`/`min`/`max`/`abs`/unary `-`/comparison lowering correctly. As of
+  Task 6's fourth fix round (2026-09-20), `Mul` is no exception —
+  `exec.rs`'s `arith` dispatches `Add`/`Sub`/`Mul`/the `+%` family through
+  one shared function that reads both operand pins' `Bits::signed` and
+  combines with `||`; see the sub-gap below.
 - **`Lt`/`Le` are the ones with real new BEHAVIOUR.** They are the only
   ordering comparisons `ir::lower` produces; `BinOp::Gt`/`Ge` still fall into
   `lower_binop`'s `unimplemented!()` catch-all, unchanged and out of scope
@@ -711,6 +713,40 @@ from that width, so widening a constant amount would inflate the result — and
 the context is applied by the caller, either by `||` against a sibling or by
 stamping a declared type — see the third fix round above for why that is the
 rule rather than a to-do.
+
+### Sub-gap (2026-09-21, OPEN — Task 6 round-5 review): the arithmetic family's `signed` flag does not round-trip through IR text
+
+**What.** Task 6's fourth fix round made `exec.rs`'s arithmetic family
+(`Add`/`Sub`/`Mul`/the `+%` family) read each operand pin's own
+`Bits::signed` flag to decide two's-complement behavior at execution
+time. But neither IR text printer (`print_line.rs`, `print_sexpr.rs`)
+emits that per-pin flag, and `parse_line.rs` builds every parsed pin as
+`Bits::unsigned` unconditionally. So a module round-tripped through IR
+text — or hand-written as IR text — silently loses arithmetic
+signedness: the same design executed straight from `lower` sign-extends
+correctly, but the identical design re-parsed from its own printed text
+executes the arithmetic unsigned, with no error and no warning, just a
+different answer. This is the exact failure mode the file already guards
+against for the ordering comparisons (the `$lt[signed]` spelling, see the
+"`ir::Bits` has no signed bit in v1" sub-gap above) — that guard was never
+extended to the arithmetic family when round 4 gave arithmetic results a
+`signed` flag too.
+
+**Why this is latent, not live, today.** Nothing currently executes IR
+parsed from text — `parse_line`'s only consumer today is
+`tests/ir_validation.rs`, which validates but never executes, and every
+`Executor` in the codebase today is built from `lower`'s in-memory output
+directly. `exec.rs`'s own module doc names executing hand-written or
+round-tripped IR text as an intended future use (Tasks 12-13), which is
+exactly when this gap becomes reachable.
+
+**Scope/fix shape (not required now, just naming it).** The same shape as
+the existing `$lt[signed]` spelling: give the text format a
+bracket-argument spelling for a signed arithmetic pin/operand (or for
+`Bits` generally) the same way `$dff[Rise]` and `$lt[signed]` already
+work, with an unrecognized bracket argument staying a parse error rather
+than a silent fall back to unsigned — matching this file's own stated
+convention for this class of change.
 
 ### Sub-gap (2026-09-04, RESOLVED 2026-09-04): `ir::validate`'s driven-set seeding was direction-blind
 
