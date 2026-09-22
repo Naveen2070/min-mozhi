@@ -50,7 +50,15 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 
 ## GAP-1 (HIGH, architectural) - No IR; width/kind semantics implemented three times
 
-**Status:** OPEN. Filed 2026-08-02.
+**Status:** OPEN. Filed 2026-08-02. As of 2026-09-22, every `ir::lower`/
+`ir::validate` sub-gap tracked under this entry is RESOLVED except one:
+the arithmetic family's `signed` flag not round-tripping through IR text
+(below, filed 2026-09-21, latent/unreachable today). The gap's own
+headline claim — three consumers (checker/emitter/simulator) each
+carrying their own type model — stays OPEN regardless: the IR is a fourth
+consumer today, not yet a replacement for the other three's independent
+width/kind logic. That is future (optimizer-and-beyond) work, not part of
+this sub-gap list.
 
 **What.** The pipeline is `lex → parse → AST → (AST→AST lowerings) → check →
 emit-text`. There is no intermediate representation, no netlist, no elaborated
@@ -1306,7 +1314,7 @@ Verification: `cargo test -p mimz-core ir::` clean (100 passed, up from 98);
 `cargo test --workspace` clean (1434 passed); `cargo clippy --workspace
 --all-targets -- -D warnings` clean.
 
-### Sub-gap (2026-09-09, OPEN, architectural — Task-7-adjacent): `fn`-body `foreach`/loop unrolling is not lowered by `ir::lower`
+### Sub-gap (2026-09-09, RESOLVED 2026-09-22 — 2026-09-10 plan's Task 7): `fn`-body `foreach`/loop unrolling is not lowered by `ir::lower`
 
 Found by Task 9's re-run of this plan's coverage probe (184/224, up from
 129/224): `fn_array_search.mimz`, `foreach_sum.mimz`, and the Tamil-pure
@@ -1353,10 +1361,49 @@ same shape of decision this project's constitution requires a dated plan +
 Decision-block for before code (same gate as Task 7, general signed IR
 values) — not something to fold into a "docs sync" task's normal gate.
 
-Not fixed here. Filed as a new dated plan candidate for whoever picks it up
-next, same as Task 7.
+**Fix (Task 7, 2026-09-22).** `FnStmt::Loop`/`FnStmt::ForEach`: statement
+splicing — for each value in the (checker-guaranteed const-foldable) range,
+splice a synthetic `FnStmt::Let(var = <literal>)` plus a clone of `body`
+into the statement stream ahead of `rest`, then recurse `lower_fn_stmts`
+unchanged. This reuses the existing `Let`/`If`/`Return` arms verbatim —
+`Return`'s arm already discards the remaining statements, which is exactly
+first-match-wins priority across unrolled iterations, so
+`fn_array_search.mimz`'s `find_index` (duplicate matches, lower index must
+win) needed no special-casing. `FnStmt::ForEach` desugars to a single
+`FnStmt::Loop` via the pre-existing `ast::lower_foreach_fn` (already used by
+`value/fn_eval.rs` for the exact same reason) and is spliced the same way.
+`SeqStmt::Loop` (the `on`-block half of this same gap, the panic text's own
+"Task 8's on-block Loop/ForEach" citation): unrolled imperatively, binding
+the loop var into the `locals: Option<&HashMap<String, Bits>>` channel
+`lower_expr` already had for `fn`-body calls (not a new side-channel —
+`expr_memo`'s cache is gated on `locals.is_none()`, and a separate channel
+would have silently served iteration 0's cached value on every later
+iteration). Required threading `locals` through `lower_seq_stmts`,
+`lower_target_rhs`, and `lower_bitselect_write`, and `fn_params` through
+`lower_fn_stmts` for the `ForEach` Elements-form's length lookup.
 
-### Sub-gap (2026-09-09, OPEN, narrow/fixable): `fn_return_guard.mimz` — the `if`/`return` mux-tree in `lower_fn_stmts`'s `FnStmt::If` arm sizes literals to their own natural width, not the function's declared return width
+**Surprise finding: `SeqStmt::ForEach` was already dead code by the time
+this task started.** `elaborate::module::lower_foreach_in_seq`
+(`crates/mimz-core/src/elaborate/module.rs:642`) already rewrites every
+on-block `ForEach` into `Loop` before a `Process` exists — the same
+invariant `elaborate/mod.rs`, `elaborate/rewrite.rs`, and
+`mimz-sim/src/sim/kernel.rs` already encode as `unreachable!()`. `ir::lower`
+now does too, with a regression test proving the pre-pass keeps it that way
+rather than merely asserting it in a comment.
+
+Both `FnStmt::Loop` and `SeqStmt::Loop` defensively cap at
+`crate::REPEAT_BUDGET` (4096) before unrolling, matching
+`value/fn_eval.rs`/`sim/kernel.rs`'s own S0227 guard — the checker does not
+enforce this bound for either shape, so nothing upstream guarantees it.
+
+Verification: `cargo test -p mimz-core ir::tests::lower_loops` 5/5 (new);
+`cargo test --workspace` clean (workspace test-count-badge check aside, see
+this file's own test-map update); `cargo clippy --workspace --all-targets --
+-D warnings` clean; differential fuzz 8/8. Coverage probe: 178/224 → 188/224
+(+10: `fn_array_search.mimz` × 5 flavors, `foreach_sum.mimz` × 4,
+Tamil-pure `kootu.mimz` × 1).
+
+### Sub-gap (2026-09-09, RESOLVED 2026-09-10 — Task 3, doc-sync deferred to 2026-09-22): `fn_return_guard.mimz` — the `if`/`return` mux-tree in `lower_fn_stmts`'s `FnStmt::If` arm sizes literals to their own natural width, not the function's declared return width
 
 Found by the same Task 9 probe re-run: `fn_return_guard.mimz` (all 5
 flavors) now validates with
@@ -1392,10 +1439,52 @@ through the full pipeline. The bit-select panic Task 5 fixed was masking
 this next-layer width bug the same way Task 6's panic masked the sub-gap
 immediately above.
 
-**Not fixed here** — out of Task 9's docs-only scope. A natural candidate
-for whoever next extends `lower_expr_sized`'s reach (or an equivalent
-sizing pass) to `lower_fn_stmts`'s return-value mux construction — narrow,
-same shape as Task 3, not a new architectural question.
+**Fix (Task 3, commit `893b06f`, 2026-09-10).** `lower_fn_stmts` gained a
+`target_width: u32` parameter, threaded from the one caller
+(`ExprKind::FnCall`, sized from `func`'s declared return type via
+`crate::value::type_width`) through every recursive arm; `FnStmt::Return`
+and the base-case tail both lower through `lower_expr_sized` at
+`target_width` instead of the branch's own natural width. This entry stayed
+marked OPEN for twelve days after the fix landed — a doc-sync gap in its
+own right, closed here (2026-09-22) alongside Task 7.
+
+### Sub-gap (2026-09-22, OPEN, not investigated — found by Task 8's coverage re-run): 24 examples fail `ir::validate` with `Mux` `WidthMismatch`, likely uncovered (not caused) by Task 6 round 4's new validate guard
+
+Re-running the coverage probe after Task 7 landed found the count moved from
+184/224 (2026-09-09 baseline) to 188/224 — a net +4, not the +28 that closing
+all three previously-tracked sub-gaps (13 signed-values + 10 loop/foreach + 5
+`fn_return_guard`) should have produced. The missing 24 are a distinct,
+previously-unlisted failure class: `enum_encoding.mimz` (5 flavors),
+`priority.mimz` (4), `std/seg7.mimz`/tamil-pure's `ennkaatti.mimz` (5),
+`sync_loop_search.mimz` (5), `traffic_light.mimz`/tamil-pure's
+`saalaivilakku.mimz` (5) — all now hit `ir::validate::validate`'s
+`WidthMismatch` on a `Mux` cell's `a`/`b` pin.
+
+**Working hypothesis, unconfirmed.** These files were almost certainly
+already producing under-width `Mux` cells before this session — the
+`validate` check that would catch it (`Mux`'s `a`/`b` pins checked against
+`out`, not just `sel`) was itself only added by Task 6 round 4
+(2026-09-20, see the `ir::Bits` sub-gap above), several days AFTER the
+184/224 baseline was measured (2026-09-09). So these 24 files most likely
+validated clean before only because nothing was checking that pin pair, not
+because their `Mux` cells were ever actually correct. `enum_encoding.mimz`
+(read as the simplest repro) drives a register with `state <- match state {
+Light.Red => Light.Green  ... }` — a `match` whose arms are ENUM VARIANT
+references, not bare integer literals or plain signals, inside an `on`-block
+assignment. This shape is outside everything Tasks 3/6/7 touched (those
+covered bare-literal/const sizing and `fn`-body/loop unrolling
+specifically) — round 4's own fix for "if/match arms lowered with plain
+`lower_expr`" (F2 in the sub-gap above) may not have reached this exact
+enum-variant-arm-inside-an-`on`-block-assignment path.
+
+**Not investigated further this session** — Task 8's own scope is doc/
+coverage sync, not new fixes, and this was found by that sync's own
+re-run, not gone looking for. Filed here rather than silently left out of
+the coverage snapshot. A natural Task 10 candidate: reproduce
+`enum_encoding.mimz`'s `WidthMismatch` in isolation, confirm or rule out
+the round-4-uncovered-it-not-caused-it hypothesis above, and find the real
+root cause (likely an enum-variant match-arm sizing gap, a related-but-
+distinct class from the literal/const sizing rounds 1-4 already closed).
 
 ---
 
