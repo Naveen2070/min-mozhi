@@ -8,6 +8,7 @@ mod lower_builtins;
 mod lower_consts;
 mod lower_ct_width;
 mod lower_fn_inline;
+mod lower_loops;
 mod lower_mem;
 mod lower_mux;
 mod lower_regs;

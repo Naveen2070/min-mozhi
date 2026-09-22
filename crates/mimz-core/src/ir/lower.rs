@@ -1,7 +1,9 @@
 //! `elaborate::Design` -> `ir::Module` lowering.
 
 use super::{Bits, Cell, CellKind, Module};
-use crate::ast::{BinOp, Builtin, Dir, Expr, ExprKind, FnStmt, LValue, SeqStmt, Type, UnOp};
+use crate::ast::{
+    BinOp, Builtin, Dir, Expr, ExprKind, FnParam, FnStmt, LValue, LocalLet, SeqStmt, Type, UnOp,
+};
 use crate::elaborate::Design;
 use std::collections::{BTreeMap, HashMap};
 
@@ -874,6 +876,7 @@ impl<'a> LowerCtx<'a> {
                     &call_locals,
                     Some(&call_arrays),
                     ret_width,
+                    &func.params,
                 );
                 // A call's `Ty` IS the fn's DECLARED return type — the checker
                 // forces the body to match it, so this is an assignment, not a
@@ -1190,16 +1193,19 @@ impl<'a> LowerCtx<'a> {
         module: &mut Module,
         e: &Expr,
         declared: Option<crate::elaborate::Width>,
+        locals: Option<&HashMap<String, Bits>>,
     ) -> Bits {
         match declared {
-            // `on`-block lowering is always top-level, never inside a `fn`
-            // body — no call-local bindings in scope.
+            // `on`-block lowering has no `arrays` scope (that's a `fn`-body-
+            // only concept — an array-typed fn param), but DOES have
+            // call-local bindings once inside a `SeqStmt::Loop`'s unrolled
+            // body: the loop variable, bound the same way a `fn` param is.
             Some(w) => {
-                let mut bits = self.lower_expr_sized(module, e, None, None, w.bits);
+                let mut bits = self.lower_expr_sized(module, e, locals, None, w.bits);
                 bits.signed = w.signed;
                 bits
             }
-            None => self.lower_expr(module, e, None, None),
+            None => self.lower_expr(module, e, locals, None),
         }
     }
 
@@ -1231,6 +1237,12 @@ impl<'a> LowerCtx<'a> {
     /// out as a 2-bit `Const` and the splice below panicked outright
     /// (`clone_from_slice` length mismatch) — GAP-1 Task 6 round 4,
     /// systematic pass.
+    // `locals` is a new trailing parameter (Task 7, `SeqStmt::Loop`'s
+    // binding channel) pushing this over clippy's default 7-argument
+    // threshold — mirrors `lower_binop`'s own `#[allow]` a few functions
+    // down for the same "bundling would relocate the argument count, not
+    // reduce it" reasoning.
+    #[allow(clippy::too_many_arguments)]
     fn lower_bitselect_write(
         &mut self,
         module: &mut Module,
@@ -1239,6 +1251,7 @@ impl<'a> LowerCtx<'a> {
         second: Option<&Expr>,
         rhs: &Expr,
         span: crate::span::Span,
+        locals: Option<&HashMap<String, Bits>>,
     ) -> Bits {
         match second {
             Some(lo) => {
@@ -1248,7 +1261,7 @@ impl<'a> LowerCtx<'a> {
                 let lo = crate::value::const_eval(lo, &self.design.consts)
                     .expect("checker guarantees a slice write's lo bound const-folds")
                     as usize;
-                let rhs = self.lower_expr_sized(module, rhs, None, None, (hi - lo + 1) as u32);
+                let rhs = self.lower_expr_sized(module, rhs, locals, None, (hi - lo + 1) as u32);
                 let mut nets = base_bits.nets.clone();
                 nets[lo..=hi].clone_from_slice(&rhs.nets);
                 Bits {
@@ -1258,9 +1271,21 @@ impl<'a> LowerCtx<'a> {
             }
             // A single-bit write's RHS is exactly 1 bit wide (the checker
             // types `q[i]` as `Ty::Bit`).
+            //
+            // NOTE: this constant-index fast path only ever consults
+            // `design.consts`, never `locals` — a loop-unrolled index (`q[i]
+            // <- v` inside `loop i: lo..hi`) therefore never folds here, even
+            // though `i`'s value is known at lowering time, and always falls
+            // through to the runtime Eq-Mux-chain path below (correct, just
+            // `hi-lo`x more cells than a constant re-point would need for
+            // that shape). Deliberately out of this task's scope — see
+            // `ir::lower`'s `SeqStmt::Loop` doc for the reasoning; fixing it
+            // would mean also threading `local_consts` (or an equivalent),
+            // more surface area than this task's signature changes already
+            // cover.
             None => match crate::value::const_eval(first, &self.design.consts) {
                 Ok(i) => {
-                    let rhs = self.lower_expr_sized(module, rhs, None, None, 1);
+                    let rhs = self.lower_expr_sized(module, rhs, locals, None, 1);
                     let mut nets = base_bits.nets.clone();
                     nets[i as usize] = rhs.nets[0];
                     Bits {
@@ -1269,8 +1294,8 @@ impl<'a> LowerCtx<'a> {
                     }
                 }
                 Err(_) => {
-                    let rhs = self.lower_expr_sized(module, rhs, None, None, 1);
-                    let idx_bits = self.lower_expr(module, first, None, None);
+                    let rhs = self.lower_expr_sized(module, rhs, locals, None, 1);
+                    let idx_bits = self.lower_expr(module, first, locals, None);
                     let width = base_bits.width();
                     let mut nets = Vec::with_capacity(width as usize);
                     for i in 0..width {
@@ -1358,6 +1383,11 @@ impl<'a> LowerCtx<'a> {
         bits
     }
 
+    // `fn_params` is a new trailing parameter (Task 7, needed by
+    // `FnStmt::ForEach`'s `lower_foreach_fn` call) pushing this over
+    // clippy's default 7-argument threshold — same reasoning as
+    // `lower_bitselect_write`'s `#[allow]` above.
+    #[allow(clippy::too_many_arguments)]
     fn lower_fn_stmts(
         &mut self,
         module: &mut Module,
@@ -1366,6 +1396,7 @@ impl<'a> LowerCtx<'a> {
         locals: &HashMap<String, Bits>,
         arrays: Option<&HashMap<String, u32>>,
         target_width: u32,
+        fn_params: &[FnParam],
     ) -> Bits {
         match stmts.split_first() {
             None => self.lower_expr_sized(module, tail, Some(locals), arrays, target_width),
@@ -1386,7 +1417,15 @@ impl<'a> LowerCtx<'a> {
                 };
                 let mut locals2 = locals.clone();
                 locals2.insert(name.clone(), v);
-                let out = self.lower_fn_stmts(module, rest, tail, &locals2, arrays, target_width);
+                let out = self.lower_fn_stmts(
+                    module,
+                    rest,
+                    tail,
+                    &locals2,
+                    arrays,
+                    target_width,
+                    fn_params,
+                );
                 match shadowed {
                     Some(prev) => self.local_consts.insert(name, prev),
                     None => self.local_consts.remove(&name),
@@ -1399,25 +1438,137 @@ impl<'a> LowerCtx<'a> {
             Some((FnStmt::If { cond, then, els }, rest)) => {
                 let sel = self.lower_expr(module, cond, Some(locals), arrays);
                 let then_full: Vec<FnStmt> = then.iter().chain(rest.iter()).cloned().collect();
-                let then_val =
-                    self.lower_fn_stmts(module, &then_full, tail, locals, arrays, target_width);
+                let then_val = self.lower_fn_stmts(
+                    module,
+                    &then_full,
+                    tail,
+                    locals,
+                    arrays,
+                    target_width,
+                    fn_params,
+                );
                 let els_slice: &[FnStmt] = els.as_deref().unwrap_or(&[]);
                 let els_full: Vec<FnStmt> = els_slice.iter().chain(rest.iter()).cloned().collect();
-                let else_val =
-                    self.lower_fn_stmts(module, &els_full, tail, locals, arrays, target_width);
+                let else_val = self.lower_fn_stmts(
+                    module,
+                    &els_full,
+                    tail,
+                    locals,
+                    arrays,
+                    target_width,
+                    fn_params,
+                );
                 // Both branches are now already sized to target_width by the
                 // Return/tail arms above, so `push_mux_cell`'s own
                 // max(then, else) formula lands on target_width too.
                 self.push_mux_cell(module, sel, then_val, else_val, cond.span)
             }
-            Some((FnStmt::Loop { span, .. }, _)) | Some((FnStmt::ForEach { span, .. }, _)) => {
-                unimplemented!(
-                    "loop/foreach unrolling inside fn bodies not yet lowered (needs \
-                     const-var-substitution machinery); span: {span:?}"
+            // `fn` bodies are NOT pre-lowered the way `on`-blocks are (see
+            // `value::fn_eval`'s own `FnStmt::ForEach` arm), so `ForEach` is
+            // desugared right here, on the spot, via the exact helper the
+            // interpreter reuses: `lower_foreach_fn` ALWAYS returns a single
+            // `FnStmt::Loop` (both the Range and Elements source forms), so
+            // splicing its one statement in place of this node and recursing
+            // routes every real case through the `Loop` arm below — no
+            // separate unrolling logic needed here.
+            Some((
+                FnStmt::ForEach {
+                    var,
+                    source,
+                    body,
+                    span,
+                },
+                rest,
+            )) => {
+                let lowered = crate::ast::lower_foreach_fn(var, source, body, *span, fn_params)
+                    .expect(
+                        "checker's E0417 already rejected an unresolvable Elements-form source",
+                    );
+                let spliced: Vec<FnStmt> =
+                    lowered.into_iter().chain(rest.iter().cloned()).collect();
+                self.lower_fn_stmts(
+                    module,
+                    &spliced,
+                    tail,
+                    locals,
+                    arrays,
+                    target_width,
+                    fn_params,
+                )
+            }
+            // `lo..hi` unrolls into `hi-lo` copies of `body`, each prefixed
+            // with a synthetic `let var = <literal i>` — plain statement
+            // splicing into the real recursion below, reusing the `Let` arm
+            // (binds `var` into both `locals` and, since a bare int literal
+            // is const-foldable, `local_consts` too) and the `If`/`Return`
+            // arms unchanged. `If` threads `rest` into both branches, so
+            // after splicing, "rest" for iteration N's body is iteration
+            // N+1's `Let`+body, ..., finally the real outer `rest` —
+            // `Return`'s arm ignores `_rest` entirely, so an earlier
+            // iteration's `return` inside an `if` cuts off every later
+            // iteration's contribution to that branch's Mux tree
+            // (first-match-wins, e.g. `fn_array_search.mimz`'s
+            // `find_index`).
+            //
+            // No `REPEAT_BUDGET` check exists upstream for `FnStmt::Loop`
+            // (the checker's E0201 only requires `lo`/`hi` to const-fold,
+            // unlike `SeqStmt::Loop`/`Repeat`'s checker-side budget
+            // enforcement) — `value::fn_eval` and `sim::kernel` both
+            // defensively re-check it themselves (S0227), so this mirrors
+            // that convention rather than trusting a typo'd bound to stay
+            // small.
+            Some((
+                FnStmt::Loop {
+                    var,
+                    lo,
+                    hi,
+                    body,
+                    span,
+                },
+                rest,
+            )) => {
+                let lo_v = crate::value::const_eval(lo, &self.design.consts)
+                    .expect("checker guarantees a fn loop's lo bound const-folds");
+                let hi_v = crate::value::const_eval(hi, &self.design.consts)
+                    .expect("checker guarantees a fn loop's hi bound const-folds");
+                let count = (hi_v - lo_v).max(0);
+                if count > crate::REPEAT_BUDGET {
+                    panic!(
+                        "`loop` would unroll {count} times, over the limit of {} (S0227)",
+                        crate::REPEAT_BUDGET
+                    );
+                }
+                let mut unrolled: Vec<FnStmt> = Vec::new();
+                let mut i = lo_v;
+                while i < hi_v {
+                    unrolled.push(FnStmt::Let(LocalLet {
+                        name: var.clone(),
+                        value: Expr {
+                            kind: ExprKind::Int {
+                                value: (i as u128).into(),
+                                raw: i.to_string(),
+                            },
+                            span: *span,
+                        },
+                        span: *span,
+                        inferred_width: std::cell::Cell::new(None),
+                    }));
+                    unrolled.extend(body.iter().cloned());
+                    i += 1;
+                }
+                unrolled.extend(rest.iter().cloned());
+                self.lower_fn_stmts(
+                    module,
+                    &unrolled,
+                    tail,
+                    locals,
+                    arrays,
+                    target_width,
+                    fn_params,
                 )
             }
             Some((FnStmt::Error(_), rest)) => {
-                self.lower_fn_stmts(module, rest, tail, locals, arrays, target_width)
+                self.lower_fn_stmts(module, rest, tail, locals, arrays, target_width, fn_params)
             }
         }
     }
@@ -1866,6 +2017,7 @@ impl<'a> LowerCtx<'a> {
         module: &mut Module,
         stmts: &[SeqStmt],
         env: &mut HashMap<String, Bits>,
+        locals: Option<&HashMap<String, Bits>>,
     ) {
         for stmt in stmts {
             if let SeqStmt::Default { name, val, .. } = stmt {
@@ -1876,9 +2028,12 @@ impl<'a> LowerCtx<'a> {
                 // seeded. Assignments to everything else are simply not
                 // this walk's business.
                 if env.contains_key(&name.name) {
-                    // `on`-block register lowering is always top-level, never
-                    // inside a `fn` body — no call-local bindings in scope.
-                    let bits = self.lower_target_rhs(module, val, self.reg_width(&name.name));
+                    // `on`-block register lowering is always top-level, but
+                    // once inside a `SeqStmt::Loop`'s unrolled body, `locals`
+                    // carries that loop's variable binding into scope here
+                    // exactly like a `fn` call's own bindings do.
+                    let bits =
+                        self.lower_target_rhs(module, val, self.reg_width(&name.name), locals);
                     env.insert(name.name.clone(), bits);
                 }
             }
@@ -1888,7 +2043,8 @@ impl<'a> LowerCtx<'a> {
                 SeqStmt::Assign { lhs, rhs } => match self.assign_target(lhs) {
                     Target::Signal(name) => {
                         if env.contains_key(&name) {
-                            let bits = self.lower_target_rhs(module, rhs, self.reg_width(&name));
+                            let bits =
+                                self.lower_target_rhs(module, rhs, self.reg_width(&name), locals);
                             env.insert(name, bits);
                         }
                     }
@@ -1923,8 +2079,9 @@ impl<'a> LowerCtx<'a> {
                                     bits,
                                     signed: false,
                                 }),
+                                locals,
                             );
-                            let data = self.lower_target_rhs(module, rhs, elem);
+                            let data = self.lower_target_rhs(module, rhs, elem, locals);
                             let one = self.lower_const(module, &const_val(1, 1), lhs.span);
                             env.insert(wen_k, one);
                             env.insert(waddr_k, addr);
@@ -1943,18 +2100,19 @@ impl<'a> LowerCtx<'a> {
                                 second.as_ref(),
                                 rhs,
                                 lhs.span,
+                                locals,
                             );
                             env.insert(name, merged);
                         }
                     }
                 },
                 SeqStmt::If { cond, then, els } => {
-                    let sel = self.lower_expr(module, cond, None, None);
+                    let sel = self.lower_expr(module, cond, locals, None);
                     let mut then_env = env.clone();
-                    self.lower_seq_stmts(module, then, &mut then_env);
+                    self.lower_seq_stmts(module, then, &mut then_env, locals);
                     let mut else_env = env.clone();
                     if let Some(else_stmts) = els {
-                        self.lower_seq_stmts(module, else_stmts, &mut else_env);
+                        self.lower_seq_stmts(module, else_stmts, &mut else_env, locals);
                     }
                     let mut changed: Vec<String> =
                         then_env.keys().chain(else_env.keys()).cloned().collect();
@@ -1982,12 +2140,107 @@ impl<'a> LowerCtx<'a> {
                     }
                 }
                 SeqStmt::Default { .. } => {} // already seeded above
-                SeqStmt::Loop { span, .. } | SeqStmt::ForEach { span, .. } => {
-                    unimplemented!(
-                        "loop/foreach unrolling inside on-blocks not yet lowered by \
-                         Task 8 (needs const-var-substitution machinery); span: {span:?}"
-                    )
+                // `lo..hi` unrolls into `hi-lo` copies of `body`, each
+                // re-walked with the loop variable bound afresh. Unlike
+                // `FnStmt`, `SeqStmt` has no `Let`-equivalent binding
+                // statement, so `var` is threaded through the `locals`
+                // channel `lower_expr`/`lower_expr_sized` already accept
+                // (today only ever populated inside `fn`-body lowering) —
+                // reusing that exact mechanism, rather than a second
+                // ctx-level side-channel, is what keeps `expr_memo` (see its
+                // own doc comment) from silently reusing iteration 0's nets
+                // for every later iteration: the memo is only
+                // populated/consulted at `locals: None`, and a non-`None`
+                // `locals` here bypasses it for every expression lowered
+                // from inside the loop body.
+                //
+                // No checker-side `REPEAT_BUDGET` enforcement exists for
+                // `SeqStmt::Loop` either — mirror `sim::kernel`'s own
+                // defensive re-check (S0227).
+                SeqStmt::Loop {
+                    var,
+                    lo,
+                    hi,
+                    body,
+                    span,
+                } => {
+                    let lo_v = crate::value::const_eval(lo, &self.design.consts)
+                        .expect("checker guarantees an on-block loop's lo bound const-folds");
+                    let hi_v = crate::value::const_eval(hi, &self.design.consts)
+                        .expect("checker guarantees an on-block loop's hi bound const-folds");
+                    let count = (hi_v - lo_v).max(0);
+                    if count > crate::REPEAT_BUDGET {
+                        panic!(
+                            "`loop` would unroll {count} times, over the limit of {} (S0227)",
+                            crate::REPEAT_BUDGET
+                        );
+                    }
+                    // `var` has no declared width of its own (the checker
+                    // binds it as a plain `ConstVal`, adapting to whatever
+                    // context uses it — see `checker/widths/stmts.rs`'s own
+                    // `SeqStmt::Loop` arm). Since it's bound here as a fixed
+                    // `Bits` (unlike a `design.consts` entry, which
+                    // `lower_expr_sized` re-sizes CONTEXTUALLY at each use
+                    // site), it needs ONE concrete width chosen up front.
+                    // Sized to the loop's own worst-case value (`hi - 1`),
+                    // the same width for every iteration — NOT each
+                    // iteration's own natural width, which would make `var`
+                    // a different width every iteration for no benefit.
+                    let var_width = crate::bits::natural_width(&crate::bits::Bits::Small(
+                        (hi_v - 1).max(0) as u128,
+                    ));
+                    let mut i = lo_v;
+                    while i < hi_v {
+                        let mut iter_locals: HashMap<String, Bits> =
+                            locals.cloned().unwrap_or_default();
+                        let var_bits =
+                            self.lower_const(module, &const_val(i as u128, var_width), *span);
+                        iter_locals.insert(var.name.clone(), var_bits);
+                        // ALSO fold `var` into `local_consts` (scoped
+                        // save/restore, exactly like `FnStmt::Let`'s own
+                        // arm does for a `let`-bound constant) so
+                        // `is_const_foldable`/`lower_expr_sized` recognize
+                        // it as an adapting `Ty::CtInt` — matching the
+                        // checker's own treatment of a loop var
+                        // (`checker/widths/stmts.rs`'s `SeqStmt::Loop` arm
+                        // binds it as a plain `ConstVal` in `cx.env`, the
+                        // same untyped-constant treatment a `design.consts`
+                        // entry gets). Without this, a binary op between
+                        // `var` and a differently-sized REAL sibling (e.g.
+                        // `acc +% i`) lowers both operands at their own,
+                        // unreconciled widths — the sibling-adopts-context
+                        // resize in `ExprKind::Binary` never fires, since it
+                        // is gated on `is_const_foldable`, which only
+                        // recognizes `design.consts`/`local_consts` entries,
+                        // never a bare `locals`-bound `Bits`. Verified
+                        // empirically before this fix: the resulting
+                        // `AddWrap` cell reached `ir::exec`'s `arith` with
+                        // mismatched `a`/`b` pin widths and hit its
+                        // `debug_assert_eq!` outright — not a silently wrong
+                        // value, a hard panic on real hardware code. This
+                        // does NOT reintroduce the `expr_memo` hazard: that
+                        // memo's gate checks only the primary `locals`
+                        // parameter (kept `Some` throughout this body), never
+                        // `local_consts`.
+                        let shadowed = self.local_consts.insert(var.name.clone(), i);
+                        self.lower_seq_stmts(module, body, env, Some(&iter_locals));
+                        match shadowed {
+                            Some(prev) => {
+                                self.local_consts.insert(var.name.clone(), prev);
+                            }
+                            None => {
+                                self.local_consts.remove(&var.name);
+                            }
+                        }
+                        i += 1;
+                    }
                 }
+                SeqStmt::ForEach { .. } => unreachable!(
+                    "ForEach is lowered before ir::lower ever runs — see elaborate_module's \
+                     ModuleItem::On arm (elaborate/module.rs's lower_foreach_in_seq, which \
+                     recursively rewrites every SeqStmt::ForEach, including inside nested \
+                     If/Loop, into its SeqStmt::Loop equivalent before a Process ever exists)"
+                ),
                 // assert/cover never synthesized (design doc decision);
                 // Error is parser-recovery-only, unreachable on the
                 // elaborated-Design path.
@@ -2169,7 +2422,7 @@ pub fn lower(design: &Design) -> Module {
             .expect("checker guarantees exactly one process per (clock, edge) pair");
         let mut env: HashMap<String, Bits> = HashMap::new();
         env.insert(reg.name.clone(), q_bits.clone()); // unassigned path: keep current value
-        ctx.lower_seq_stmts(&mut module, &proc.body, &mut env);
+        ctx.lower_seq_stmts(&mut module, &proc.body, &mut env, None);
         let mut d_bits = env
             .remove(&reg.name)
             .expect("lower_seq_stmts always re-inserts every target it started with");
@@ -2247,7 +2500,7 @@ pub fn lower(design: &Design) -> Module {
         env.insert(wen_k.clone(), seed_wen);
         env.insert(waddr_k.clone(), seed_addr);
         env.insert(wdata_k.clone(), seed_data);
-        ctx.lower_seq_stmts(&mut module, &proc.body, &mut env);
+        ctx.lower_seq_stmts(&mut module, &proc.body, &mut env, None);
         let expect = "lower_seq_stmts always re-inserts every target it started with";
         let wen = env.remove(&wen_k).expect(expect);
         let waddr = env.remove(&waddr_k).expect(expect);

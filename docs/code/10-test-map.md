@@ -22,9 +22,27 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1475 tests** as of 2026-09-20 (`cargo test --workspace`; the count is
+**1480 tests** as of 2026-09-22 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
-+5 from `crates/mimz-core/src/ir/tests/lower_builtins.rs` (2026-09-10
++5 from `crates/mimz-core/src/ir/tests/lower_loops.rs` (2026-09-10
+IR-base-gap-closure plan, Task 7) —
+`fn_loop_range_form_first_match_wins`,
+`fn_foreach_elements_form_accumulates_array`,
+`seq_loop_unrolls_into_four_const_bindings`,
+`seq_loop_var_resizes_against_a_wider_sibling` and
+`seq_foreach_syntax_lowers_via_preexisting_unroll_pass`, pinning `ir::lower`'s
+last remaining gap before the optimizer track: `FnStmt::Loop`/`FnStmt::ForEach`
+now unroll via compile-time statement splicing (reusing the existing
+`Let`/`If`/`Return` arms, so `return`'s first-match-wins priority falls out
+for free — see `fn_array_search.mimz`), and `SeqStmt::Loop` unrolls by
+threading the loop variable through the same `locals` binding channel
+`fn`-body calls already used (not a new side-channel, which would have
+silently reintroduced `expr_memo`'s per-iteration cache-corruption hazard).
+`SeqStmt::ForEach` turned out to already be dead code by the time this task
+started (`elaborate::module::lower_foreach_in_seq` eliminates it before
+`ir::lower` ever runs) — the last test proves that pre-pass invariant holds
+rather than merely asserting it; +5 from
+`crates/mimz-core/src/ir/tests/lower_builtins.rs` (2026-09-10
 IR-base-gap-closure plan, Task 6 fix round 2) —
 `a_runtime_bit_select_is_unsigned_even_over_a_signed_base`,
 `a_slice_and_a_constant_bit_select_are_unsigned_even_over_a_signed_base`,
