@@ -96,23 +96,20 @@ language-feature work, now that Enum Variant Construction has shipped
 
   Coverage snapshot (throwaway probe, lex → parse → check →
   `elaborate_project` → `ir::lower` → `ir::validate` over every
-  `examples/**/*.mimz` file standalone), as of 2026-09-22's Task 7 (loop/
-  `foreach` unrolling): **188/224**, up from a 129/224 baseline. Every
-  previously-tracked `ir::lower`/`ir::validate` gap this plan and its
-  predecessors named is closed (see
-  `docs/superpowers/plans/2026-09-10-ir-base-gap-closure.local.md` and
-  `docs/audit/gaps.md` GAP-1). The remaining 36 non-passing files are 12
-  cross-file `import`/`include` examples (a standalone-file probe artifact,
-  not a real gap — those files never fail through the real multi-file
-  `mimz build`/`mimz test` path) plus a newly-found, NOT-yet-fixed 24-file
-  `Mux` `WidthMismatch` class (`enum_encoding.mimz`, `priority.mimz`,
-  `seg7.mimz`/`ennkaatti.mimz`, `sync_loop_search.mimz`,
-  `traffic_light.mimz`/`saalaivilakku.mimz`, all flavors) surfaced by this
-  same re-run — see `docs/audit/gaps.md` GAP-1's newest sub-gap
-  (2026-09-22) for what's known and not yet investigated. Exit criterion #2
-  is therefore NOT yet fully met even for lowering + validation alone; the
-  "survive optimizer passes" clause stays open on top of that until the
-  optimizer itself exists.
+  `examples/**/*.mimz` file standalone), as of 2026-09-23's Mux-width-gaps
+  plan: **212/224**, up from a 129/224 baseline. Every previously-tracked
+  `ir::lower`/`ir::validate` gap this plan and its predecessors named is
+  closed, including the 24-file `Mux` `WidthMismatch` class found by the
+  2026-09-10 plan's own Task 8 re-run and closed by
+  `docs/superpowers/plans/2026-09-23-ir-mux-width-gaps.local.md` (see
+  `docs/audit/gaps.md` GAP-1). The remaining 12 non-passing files are the
+  documented cross-file `import`/`include` standalone-probe artifact, not a
+  real gap — those files never fail through the real multi-file `mimz
+build`/`mimz test` path. Exit criterion #2's "lower to IR, pass IR
+  validation" clause is now met for the full example corpus; the "survive
+  optimizer passes" clause stays open on top of that until the optimizer
+  itself exists — do not read this as the whole criterion being done, only
+  the lowering+validation portion.
 
 ### Optimizer (first passes)
 

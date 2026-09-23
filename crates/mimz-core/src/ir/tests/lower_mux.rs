@@ -1,4 +1,4 @@
-use super::{ident, w};
+use super::{ident, lower_valid, w};
 use crate::ast::{Arm, Expr, ExprKind, Pattern};
 use crate::elaborate::{Design, Signal};
 use crate::ir::{Bits, Cell, CellKind, Module, lower};
@@ -313,4 +313,108 @@ fn lowers_match_with_int_mask_pattern_to_and_then_eq() {
     assert_eq!(and_cells[0].pins["out"], eq_cells[0].pins["a"]);
     assert_eq!(and_cells[0].pins["a"].width(), 8);
     assert_eq!(and_cells[0].pins["b"].width(), 8);
+}
+
+/// GAP-1: `lower_match`'s "every arm constant, no sibling" fallback used to
+/// size each arm at its own natural width instead of the others' — `Light.Red`
+/// (rewritten to the literal `0`, natural width 1) and `Light.Blue`
+/// (rewritten to `2`, natural width 2) fed the same `push_mux_cell` chain at
+/// different widths, and `push_mux_cell` wired them straight to `a`/`b`
+/// unchanged. `validate`'s `Mux` `a`/`b`-vs-`out` check (added GAP-1 Task 6
+/// round 4) caught this for real on `enum_encoding.mimz` and four sibling
+/// examples (`priority.mimz`, `seg7.mimz`, `sync_loop_search.mimz`,
+/// `traffic_light.mimz`) — this is `enum_encoding.mimz`'s own shape, pinned
+/// directly rather than only through the full example-file coverage probe.
+#[test]
+fn mux_chain_widens_a_narrower_arm_to_match_a_wider_sibling() {
+    let src = r#"
+        module M {
+          clock clk
+          reset rst
+          out state_bits: bits[2]
+          enum Light { Red, Green, Blue }
+          reg state: Light = Light.Red
+          on rise(clk) {
+            state <- match state {
+              Light.Red   => Light.Green
+              Light.Green => Light.Blue
+              Light.Blue  => Light.Red
+            }
+          }
+          state_bits = encoding(state)
+        }
+    "#;
+    let _module = lower_valid(src);
+}
+
+/// Companion to the test above, over a SIGNED value — `widen_to` must
+/// replicate the narrower operand's own sign bit, not pad with a fresh zero
+/// constant, or a negative narrower arm corrupts into a positive one once
+/// widened. Also depends on Task 3 (`lower_match`'s `target_width`
+/// threading) to go fully green: this design's widest arm (`-3` / `2`, both
+/// needing only 2 bits) is narrower than the declared `signed[4]` output, so
+/// `push_mux_cell`'s widening alone still leaves a `PortWidthMismatch` —
+/// confirm after Task 1 alone that the SIGN part is fixed (no more `Mux`
+/// `a`/`b` `WidthMismatch`, only `PortWidthMismatch` remains).
+#[test]
+fn mux_chain_sign_extends_a_narrower_signed_arm() {
+    let src = r#"
+        module M {
+          in sel: bits[2]
+          out o: signed[4]
+          o = match sel {
+            0 => 1
+            1 => -3
+            _ => 2
+          }
+        }
+    "#;
+    let module = lower_valid(src);
+    let mut exec = crate::ir::exec::Executor::new(&module);
+    exec.set_input("sel", crate::value::Val::new(1, 2, false));
+    exec.tick();
+    let o = exec.get_output("o");
+    assert_eq!(
+        o.bits,
+        crate::bits::Bits::Small(0b1101),
+        "sel=1 selects the -3 arm — must stay -3 (4-bit two's complement 0b1101) after sign-extending from its own narrower natural width, not zero-pad into a positive value"
+    );
+}
+
+/// GAP-1: closing the sibling bug above via `push_mux_cell` alone is not
+/// sufficient — it only equalizes a `match`'s own arms against EACH OTHER,
+/// not against the DECLARED width of whatever the match feeds. Here every
+/// arm's own natural width (4 or 5 bits, from `10`/`20`/`30`) is narrower
+/// than `o`'s declared `bits[8]`; closed by Task 3 of this plan
+/// (`lower_expr_sized`'s dedicated `Match` arm threading `target_width` into
+/// `lower_match`'s no-sibling fallback). Stays RED after Task 1 alone.
+#[test]
+fn match_with_all_constant_arms_narrower_than_out_widens_to_the_declared_port_width() {
+    let src = r#"
+        module M {
+          in x: bits[8]
+          out o: bits[8]
+          o = match x {
+            0 => 10
+            1 => 20
+            _ => 30
+          }
+        }
+    "#;
+    let module = lower_valid(src);
+    let out = module.ports.iter().find(|(n, _, _)| n == "o").unwrap();
+    assert_eq!(
+        out.1.width(),
+        8,
+        "match result must size to the declared bits[8] output, not its widest arm's own natural width (5 bits, from 30)"
+    );
+    let mut exec = crate::ir::exec::Executor::new(&module);
+    exec.set_input("x", crate::value::Val::new(1, 8, false));
+    exec.tick();
+    let o = exec.get_output("o");
+    assert_eq!(
+        o.bits,
+        crate::bits::Bits::Small(20),
+        "x=1 must select arm 1's value (20) at the correct width, not a truncated/corrupted one"
+    );
 }
