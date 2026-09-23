@@ -81,7 +81,7 @@ module VgaKuri (
                     frame_cnt_running_r <= 0;
                     frame_cnt_done_r <= 1;
                 end else begin
-                    frame_cnt_cnt <= (frame_cnt_cnt + 1);
+                    frame_cnt_cnt <= (frame_cnt_cnt + 4'd1);
                     frame_cnt_done_r <= 0;
                 end
                 if (((h_cnt == (800 - 1)) && (v_cnt == (525 - 1)))) begin

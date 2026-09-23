@@ -50,7 +50,7 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 
 ## GAP-1 (HIGH, architectural) - No IR; width/kind semantics implemented three times
 
-**Status:** OPEN. Filed 2026-08-02. As of 2026-09-22, every `ir::lower`/
+**Status:** OPEN. Filed 2026-08-02. As of 2026-09-23, every `ir::lower`/
 `ir::validate` sub-gap tracked under this entry is RESOLVED except one:
 the arithmetic family's `signed` flag not round-tripping through IR text
 (below, filed 2026-09-21, latent/unreachable today). The gap's own
@@ -1448,7 +1448,7 @@ and the base-case tail both lower through `lower_expr_sized` at
 marked OPEN for twelve days after the fix landed — a doc-sync gap in its
 own right, closed here (2026-09-22) alongside Task 7.
 
-### Sub-gap (2026-09-22, OPEN, not investigated — found by Task 8's coverage re-run): 24 examples fail `ir::validate` with `Mux` `WidthMismatch`, likely uncovered (not caused) by Task 6 round 4's new validate guard
+### Sub-gap (2026-09-22, RESOLVED 2026-09-23): 24 examples fail `ir::validate` with `Mux` `WidthMismatch`, uncovered (not caused) by Task 6 round 4's new validate guard
 
 Re-running the coverage probe after Task 7 landed found the count moved from
 184/224 (2026-09-09 baseline) to 188/224 — a net +4, not the +28 that closing
@@ -1477,14 +1477,65 @@ specifically) — round 4's own fix for "if/match arms lowered with plain
 `lower_expr`" (F2 in the sub-gap above) may not have reached this exact
 enum-variant-arm-inside-an-`on`-block-assignment path.
 
-**Not investigated further this session** — Task 8's own scope is doc/
-coverage sync, not new fixes, and this was found by that sync's own
-re-run, not gone looking for. Filed here rather than silently left out of
-the coverage snapshot. A natural Task 10 candidate: reproduce
-`enum_encoding.mimz`'s `WidthMismatch` in isolation, confirm or rule out
-the round-4-uncovered-it-not-caused-it hypothesis above, and find the real
-root cause (likely an enum-variant match-arm sizing gap, a related-but-
-distinct class from the literal/const sizing rounds 1-4 already closed).
+**Fix (2026-09-23, `docs/superpowers/plans/2026-09-23-ir-mux-width-gaps.local.md`).**
+Two independent root causes, both confirmed rather than left as hypotheses:
+
+1. **`push_mux_cell` never widened a narrower operand.** The shared `sel ? a
+: b` cell constructor computed `out_width = a.width().max(b.width())` but
+   wired `a`/`b` straight into the `Mux` cell unchanged — `out`'s width was a
+   label, not something the pins were made to agree with. `lower_match`'s
+   "every arm constant, no sibling" fallback is the one caller that can hand
+   it two really-different-width operands (`Light.Red` → literal `0` →
+   1 bit, `Light.Blue` → literal `2` → 2 bits) — this confirms the round-4
+   guard's own working hypothesis exactly: these `Mux` cells were always
+   wrong, nothing was checking the `a`/`b` pins before. Fixed with a new
+   `widen_to` helper (zero/sign-extends per the operand's own `signed` flag,
+   the same logic `Builtin::Extend` already used inline, kept as a separate
+   copy rather than a refactor of `Extend`), called on both operands before
+   `push_mux_cell` wires them in.
+2. **A second, independent bug in `sync_loop_search.mimz`/`traffic_light.mimz`
+   /`saalaivilakku.mimz`'s shared machinery**, found only by chasing the
+   probe's own `WidthMismatch` output past `enum_encoding.mimz`'s repro:
+   `sync_loop_lower.rs`'s desugared `sync loop` counter increment
+   (`cnt <- cnt + 1`) used plain `BinOp::Add`, which grows the result one bit
+   past the counter's own declared `clog2(hi)` width — a `Dff` whose `d` pin
+   was wider than its own `q` pin. The counter never actually needs the
+   extra bit (the increment only runs when `cnt != hi - 1`), so `+%`
+   (same-width wraparound, never actually wrapping here) is exactly the
+   operator the checker's own E0401 message already recommends for
+   hand-written code hitting this identical shape. One-token fix
+   (`BinOp::Add` → `BinOp::AddWrap`); only alters emitted Verilog cosmetically
+   (a literal now prints `4'd1` instead of bare `1`), confirmed via
+   `MIMZ_UPDATE_GOLDENS=1` and reading every touched golden's diff.
+3. **A residual gap fixing (1) alone left open**, confirmed via a hand-built
+   regression rather than left as a theoretical concern: `push_mux_cell`'s
+   widening only equalizes a `match`'s arms against EACH OTHER, not against
+   whatever DECLARED width the whole match feeds — `match x { 0=>10 1=>20
+_=>30 }` assigned to a declared `bits[8]` output still produced
+   `PortWidthMismatch { declared: 8, found: 5 }` after fix (1) alone (none of
+   the 24 real examples hit this — each one's widest constant arm happens to
+   already need the full declared width, e.g. an enum's widest tag or
+   `seg7.mimz`'s `0x7F` glyph). Fixed by threading a `target_width:
+Option<u32>` into `lower_match`, sourced from a new dedicated
+   `ExprKind::Match` arm in `lower_expr_sized` — the same "declared type
+   stamps directly" rule this file's Task 6 round 3 write-up already
+   established for every other no-sibling constant position, applied here
+   for the first time.
+
+7 new regression tests across `crates/mimz-core/src/ir/tests/lower_mux.rs`
+(5) and `lower_sync_loop_width.rs` (1, new file), plus one pre-existing
+test's assertion corrected (`if_else_both_returning_produces_one_mux_selected_on_cond`,
+`lower_fn_inline.rs` — it was unknowingly asserting the pre-fix exact-net-identity
+behavior). A second pre-existing test
+(`lowers_match_with_int_arms_and_wildcard_to_chained_mux_eq`) needed no edit
+at all — fix (3) makes it pass by construction. Verification: coverage probe
+188/224 → **212/224** (every real example now clears `ir::validate`; the
+remaining 12 are the documented cross-file `import` standalone-probe
+artifact, unrelated to this gap); `cargo test --workspace` clean except the
+mechanically-enforced test-count badge (synced separately, see below);
+`cargo clippy --workspace --all-targets -- -D warnings` clean; differential
+fuzz 8/8 (the clocked IR-vs-kernel leg specifically confirms the `+%` change
+has no semantic divergence, not just a cosmetic Verilog diff).
 
 ---
 

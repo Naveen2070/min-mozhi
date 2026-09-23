@@ -317,7 +317,18 @@ impl<'a> LowerCtx<'a> {
         };
         match folded {
             Some(cv) => self.lower_const(module, &cv, e.span),
-            None => self.lower_expr(module, e, locals, arrays),
+            None => match &e.kind {
+                ExprKind::Match { scrutinee, arms } => self.lower_match(
+                    module,
+                    scrutinee,
+                    arms,
+                    e.span,
+                    locals,
+                    arrays,
+                    Some(target_width),
+                ),
+                _ => self.lower_expr(module, e, locals, arrays),
+            },
         }
     }
 
@@ -801,7 +812,7 @@ impl<'a> LowerCtx<'a> {
                 }
             }
             ExprKind::Match { scrutinee, arms } => {
-                self.lower_match(module, scrutinee, arms, e.span, locals, arrays)
+                self.lower_match(module, scrutinee, arms, e.span, locals, arrays, None)
             }
             ExprKind::FnCall { name, args } => {
                 let func = self.design.funcs.get(&name.name).unwrap_or_else(|| {
@@ -1789,6 +1800,7 @@ impl<'a> LowerCtx<'a> {
     /// pattern wins — matching `emit_verilog::expr::match_subst`'s
     /// `is_last || is_wild` priority exactly, so IR execution and Verilog
     /// output never disagree on tie-breaking.
+    #[allow(clippy::too_many_arguments)]
     fn lower_match(
         &mut self,
         module: &mut Module,
@@ -1797,6 +1809,7 @@ impl<'a> LowerCtx<'a> {
         span: crate::span::Span,
         locals: Option<&HashMap<String, Bits>>,
         arrays: Option<&HashMap<String, u32>>,
+        target_width: Option<u32>,
     ) -> Bits {
         let scrutinee_bits = self.lower_expr(module, scrutinee, locals, arrays);
         let n = arms.len();
@@ -1805,24 +1818,46 @@ impl<'a> LowerCtx<'a> {
         // adopts its width and signedness from (`lower_sibling`). Without it
         // each constant arm kept its own natural width and the fold returned
         // the raw literal — `match s { 0 => a  _ => -1 }` gave `1`, not `0xFF`
-        // (GAP-1 Task 6 round 4, F2). If EVERY arm is constant there is no
-        // sibling to adopt, and `lower_sibling` degrades to plain `lower_expr`
-        // for all of them, exactly as before.
+        // (GAP-1 Task 6 round 4, F2).
+        //
+        // If EVERY arm is constant there is no sibling to adopt from inside
+        // the match itself. `lower_expr_sized`'s Match arm passes its own
+        // `target_width` here for exactly that case — the declared-type
+        // context (a register/port/fn-return width) plays the same "stamp
+        // it directly" role `Ty::CtInt` gets everywhere else a constant has
+        // no sibling of its own (GAP-1 Task 6 round 3). Without it, an
+        // all-constant match (`state <- match state { Light.Red =>
+        // Light.Green  ... }`) sized itself to its WIDEST arm's own natural
+        // width instead of its declared type's width — usually harmless by
+        // coincidence (an enum's widest tag-only variant naturally needs
+        // exactly `clog2(variant count)` bits, matching the enum's declared
+        // width), but not guaranteed: `match x { 0 => 10  1 => 20  _ => 30 }`
+        // assigned to a `bits[8]` output sized itself to 5 bits (30's own
+        // natural width) and `validate` caught the resulting
+        // `PortWidthMismatch` outright. Plain `lower_expr` (`target_width:
+        // None`, `lower_expr`'s own generic `Match` arm) keeps the old
+        // widest-arm behavior — a nested match with no declared context of
+        // its own has nothing else to size to.
         let reference = arms
             .iter()
             .position(|a| !self.is_const_foldable(&a.value, locals))
             .map(|i| self.lower_expr(module, &arms[i].value, locals, arrays));
-        let mut acc = self.lower_sibling(
-            module,
-            &arms[n - 1].value,
-            reference.as_ref(),
-            locals,
-            arrays,
-        );
+        let mut acc = match (&reference, target_width) {
+            (None, Some(w)) => self.lower_expr_sized(module, &arms[n - 1].value, locals, arrays, w),
+            _ => self.lower_sibling(
+                module,
+                &arms[n - 1].value,
+                reference.as_ref(),
+                locals,
+                arrays,
+            ),
+        };
         for arm in arms[..n - 1].iter().rev() {
             let sel = self.lower_pattern_conds(module, &scrutinee_bits, &arm.patterns, span);
-            let arm_value =
-                self.lower_sibling(module, &arm.value, reference.as_ref(), locals, arrays);
+            let arm_value = match (&reference, target_width) {
+                (None, Some(w)) => self.lower_expr_sized(module, &arm.value, locals, arrays, w),
+                _ => self.lower_sibling(module, &arm.value, reference.as_ref(), locals, arrays),
+            };
             // Every arm is unified to one `Ty` by the checker, so each fold
             // step's `a.signed || b.signed` (inside `push_mux_cell`) carries
             // the arms' shared signedness all the way down the chain — `||`
@@ -1994,8 +2029,11 @@ impl<'a> LowerCtx<'a> {
         span: crate::span::Span,
     ) -> Bits {
         let out_width = a.width().max(b.width());
+        let signed = a.signed || b.signed;
+        let a = self.widen_to(module, a, out_width, span);
+        let b = self.widen_to(module, b, out_width, span);
         let mut out = module.alloc_bits(out_width, None);
-        out.signed = a.signed || b.signed;
+        out.signed = signed;
         module.cells.push(Cell {
             kind: CellKind::Mux,
             pins: [("sel", sel), ("a", a), ("b", b), ("out", out.clone())]
@@ -2004,6 +2042,39 @@ impl<'a> LowerCtx<'a> {
             span,
         });
         out
+    }
+
+    /// Zero- or sign-extends `bits` to `width` (per its own `signed` flag),
+    /// exactly like `Builtin::Extend`'s inline logic — a separate copy, not a
+    /// refactor of `Extend`, since `push_mux_cell` is the one caller that can
+    /// receive two operands of genuinely different widths (a `lower_match`
+    /// no-sibling fallback over constants of differing natural width; every
+    /// OTHER `push_mux_cell` caller already hands it equal-width operands by
+    /// construction, so this is a no-op there). Narrowing is not this
+    /// function's job: `width <= bits.width()` returns `bits` untouched.
+    fn widen_to(
+        &mut self,
+        module: &mut Module,
+        bits: Bits,
+        width: u32,
+        span: crate::span::Span,
+    ) -> Bits {
+        if width <= bits.width() {
+            return bits;
+        }
+        let pad_net = if bits.signed {
+            *bits
+                .nets
+                .last()
+                .expect("a zero-width value never reaches lowering")
+        } else {
+            self.lower_const(module, &const_val(0, 1), span).nets[0]
+        };
+        let pad = vec![pad_net; (width - bits.width()) as usize];
+        Bits {
+            nets: [bits.nets, pad].concat(),
+            signed: bits.signed,
+        }
     }
 
     /// Walks one `on`-block body, folding last-write-wins per-target

@@ -106,7 +106,7 @@ pub fn lower_sync_loop(sl: &SyncLoop) -> Vec<ModuleItem> {
                 &cnt_name,
                 Expr {
                     kind: ExprKind::Binary {
-                        op: BinOp::Add,
+                        op: BinOp::AddWrap,
                         lhs: Box::new(ident_expr(cnt_name.clone())),
                         rhs: Box::new(int_expr(1)),
                     },
