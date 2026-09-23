@@ -22,9 +22,29 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1480 tests** as of 2026-09-22 (`cargo test --workspace`; the count is
+**1484 tests** as of 2026-09-23 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
-+5 from `crates/mimz-core/src/ir/tests/lower_loops.rs` (2026-09-10
++3 from `crates/mimz-core/src/ir/tests/lower_mux.rs` and +1 from the new
+`crates/mimz-core/src/ir/tests/lower_sync_loop_width.rs`
+(`docs/superpowers/plans/2026-09-23-ir-mux-width-gaps.local.md`) —
+`mux_chain_widens_a_narrower_arm_to_match_a_wider_sibling`,
+`mux_chain_sign_extends_a_narrower_signed_arm`,
+`match_with_all_constant_arms_narrower_than_out_widens_to_the_declared_port_width`,
+and `sync_loop_counter_increment_does_not_grow_past_its_declared_width`,
+closing GAP-1's newest sub-gap (24 examples failing `ir::validate` with `Mux`
+`WidthMismatch`): `push_mux_cell` now zero/sign-extends a narrower Mux
+operand to match its sibling instead of wiring mismatched widths straight
+into the cell, `lower_match`'s no-sibling fallback now sizes to its
+caller's declared width instead of only its own widest arm, and
+`sync_loop_lower.rs`'s counter increment uses `+%` instead of `+` so it
+never grows past the counter's own declared width. A fifth pre-existing
+test needed no code change at all — `lowers_match_with_int_arms_and_wildcard_to_chained_mux_eq`
+passes now by construction, not by assertion update — and one more
+pre-existing test's assertion was corrected
+(`if_else_both_returning_produces_one_mux_selected_on_cond`,
+`lower_fn_inline.rs`: it was unknowingly asserting the pre-fix
+exact-net-identity behavior that the fix's widening now legitimately
+changes); +5 from `crates/mimz-core/src/ir/tests/lower_loops.rs` (2026-09-10
 IR-base-gap-closure plan, Task 7) —
 `fn_loop_range_form_first_match_wins`,
 `fn_foreach_elements_form_accumulates_array`,

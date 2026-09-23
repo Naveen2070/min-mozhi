@@ -206,8 +206,20 @@ fn if_else_both_returning_produces_one_mux_selected_on_cond() {
         "mux `a` is the then branch (x+x)"
     );
 
+    // `b` (the else branch, `x`) is narrower than `a` (`x+x`, which grows
+    // one bit past `x`'s own width) — `push_mux_cell` widens the narrower
+    // arm to match rather than wiring mismatched widths to the same `out`
+    // pin (GAP-1: this exact bug, found via `enum_encoding.mimz`'s
+    // all-constant `match` arms, produced `WidthMismatch`es `validate`
+    // silently let through before). `b`'s original bits are still `x`,
+    // zero-extended.
     let a_bits = find_port(&module, "a").clone();
-    assert_eq!(mux.pins["b"], a_bits, "mux `b` is the else branch (x)");
+    assert_eq!(mux.pins["b"].width(), mux.pins["a"].width());
+    assert_eq!(
+        &mux.pins["b"].nets[..a_bits.width() as usize],
+        &a_bits.nets[..],
+        "mux `b`'s low bits are still the else branch (x)"
+    );
     assert_eq!(*find_port(&module, "out"), mux.pins["out"]);
 }
 
