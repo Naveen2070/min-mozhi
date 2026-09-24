@@ -22,9 +22,17 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1484 tests** as of 2026-09-23 (`cargo test --workspace`; the count is
+**1487 tests** as of 2026-09-24 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
-+3 from `crates/mimz-core/src/ir/tests/lower_mux.rs` and +1 from the new
+interim count after Task 1 of
+`docs/superpowers/plans/2026-09-24-ir-const-fold.local.md`: +3 from the new
+`crates/mimz-core/src/ir/tests/opt_const_fold.rs`
+(`net_consts_maps_every_const_driven_net_to_its_bit`,
+`folds_an_add_whose_inputs_are_both_constant`,
+`leaves_a_cell_with_one_non_constant_input_alone`), pinning the first pass
+of the IR optimizer track (`ir::opt::fold_constants`); 8 more tests land in
+that plan's later tasks. Previously, as of 2026-09-23: +3 from
+`crates/mimz-core/src/ir/tests/lower_mux.rs` and +1 from the new
 `crates/mimz-core/src/ir/tests/lower_sync_loop_width.rs`
 (`docs/superpowers/plans/2026-09-23-ir-mux-width-gaps.local.md`) —
 `mux_chain_widens_a_narrower_arm_to_match_a_wider_sibling`,

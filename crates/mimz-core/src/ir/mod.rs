@@ -3,6 +3,7 @@
 
 pub mod exec;
 pub mod lower;
+pub mod opt;
 pub mod parse_line;
 pub mod print_line;
 pub mod print_sexpr;
