@@ -22,17 +22,32 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1487 tests** as of 2026-09-24 (`cargo test --workspace`; the count is
+**1495 tests** as of 2026-09-24 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
-interim count after Task 1 of
-`docs/superpowers/plans/2026-09-24-ir-const-fold.local.md`: +3 from the new
-`crates/mimz-core/src/ir/tests/opt_const_fold.rs`
-(`net_consts_maps_every_const_driven_net_to_its_bit`,
++11 from the new `crates/mimz-core/src/ir/tests/opt_const_fold.rs`
+(`docs/superpowers/plans/2026-09-24-ir-const-fold.local.md`) —
+`net_consts_maps_every_const_driven_net_to_its_bit`,
 `folds_an_add_whose_inputs_are_both_constant`,
-`leaves_a_cell_with_one_non_constant_input_alone`), pinning the first pass
-of the IR optimizer track (`ir::opt::fold_constants`); 8 more tests land in
-that plan's later tasks. Previously, as of 2026-09-23: +3 from
-`crates/mimz-core/src/ir/tests/lower_mux.rs` and +1 from the new
+`leaves_a_cell_with_one_non_constant_input_alone`,
+`folds_a_multi_hop_chain_regardless_of_cell_order`,
+`a_second_call_on_a_folded_module_reports_no_change`,
+`folds_a_signed_add_with_its_operands_signedness`,
+`folds_concat_and_slice_in_execs_bit_order`,
+`never_folds_a_dff_even_with_a_constant_d`,
+`never_folds_a_mem_even_with_constant_write_pins`,
+`skips_a_candidate_too_wide_for_the_executor` and
+`does_not_fold_a_shift_amount_that_lower_sized_as_runtime`, pinning the first
+pass of the IR optimizer track: `ir::opt::fold_constants` replaces a
+pure-combinational cell whose every input is compile-time constant with a
+`Const` cell carrying the same value, reusing `ir::exec::Executor` on a
+throwaway module rather than a second per-`CellKind` evaluator, iterated to a
+fixpoint via `ir::opt::run_to_fixpoint`. Two guards not named by the design
+spec were added and are logged as Decisions in `docs/log/2026-09-24.md`:
+skip any candidate wider than 128 bits (`exec`'s net reconstruction panics
+past that), and never fold a `Shl`'s exact shift-amount driver (folding it
+flips `validate`'s width expectation from worst-case to exact). Previously,
+as of 2026-09-23: +3 from `crates/mimz-core/src/ir/tests/lower_mux.rs` and +1
+from the new
 `crates/mimz-core/src/ir/tests/lower_sync_loop_width.rs`
 (`docs/superpowers/plans/2026-09-23-ir-mux-width-gaps.local.md`) —
 `mux_chain_widens_a_narrower_arm_to_match_a_wider_sibling`,
