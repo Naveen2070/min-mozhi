@@ -237,6 +237,9 @@ mimz/ (workspace root)
 │   │       └── ir/                        # typed netlist IR (Phase 2)
 │   │           ├── mod.rs                     # Module/Cell/CellKind/NetId/Bits types; lower() entry
 │   │           ├── lower.rs                   # Design -> Module: cells, mux trees, fn inlining, blackbox
+│   │           ├── opt/                       # optimizer passes (Phase 2)
+│   │           │   ├── mod.rs                     # net_consts, run_to_fixpoint (shared plumbing)
+│   │           │   └── const_fold.rs              # fold_constants: all-const-input cells -> Const
 │   │           ├── validate.rs                # 5 checks (drivers/undriven/widths/cycles/blackbox)
 │   │           ├── exec.rs                    # IR executor (Val-based) for differential testing
 │   │           ├── print_line.rs / parse_line.rs  # line-based text format (round-trips)

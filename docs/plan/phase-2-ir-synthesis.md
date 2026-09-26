@@ -113,9 +113,16 @@ build`/`mimz test` path. Exit criterion #2's "lower to IR, pass IR
 
 ### Optimizer (first passes)
 
-- [ ] Constant folding / propagation
+- [x] Constant folding / propagation
 - [ ] Dead signal & dead cell elimination
 - [ ] Mux-tree simplification
+
+> `ir::opt::fold_constants` (2026-09-24,
+> `docs/superpowers/specs/2026-09-24-ir-const-fold-design.local.md`) is a
+> standalone function. It is **not yet wired** into `mimz build`, `ir::lower`
+> or any CLI flag. Wiring is a follow-up once all three passes exist and can
+> be composed through `ir::opt::run_to_fixpoint`. It also leaves the cells it
+> folded around as dead upstream cells, which is dead-cell elimination's job.
 
 ### Synthesis path (pragmatic first)
 

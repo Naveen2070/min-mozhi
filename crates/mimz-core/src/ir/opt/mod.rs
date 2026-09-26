@@ -25,3 +25,15 @@ pub(crate) fn net_consts(module: &Module) -> HashMap<NetId, bool> {
     }
     consts
 }
+
+/// Runs `pass` until it reports no change. Returns whether any run did.
+pub(crate) fn run_to_fixpoint(
+    module: &mut Module,
+    mut pass: impl FnMut(&mut Module) -> bool,
+) -> bool {
+    let mut changed = false;
+    while pass(module) {
+        changed = true;
+    }
+    changed
+}

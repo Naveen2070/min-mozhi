@@ -1,16 +1,16 @@
 //! Constant folding/propagation: a pure-combinational cell whose every input
 //! net is Const-driven becomes a `Const` cell with the same `out` pin.
 
-use super::net_consts;
+use super::{net_consts, run_to_fixpoint};
 use crate::checker::consteval::ConstVal;
 use crate::ir::exec::Executor;
-use crate::ir::{Cell, CellKind, Module, NetId};
+use crate::ir::{Bits, Cell, CellKind, Module, NetId};
 use std::collections::{BTreeMap, HashMap};
 
 /// Folds every all-constant-input combinational cell. Returns whether
 /// anything changed.
 pub fn fold_constants(module: &mut Module) -> bool {
-    fold_once(module)
+    run_to_fixpoint(module, fold_once)
 }
 
 fn fold_once(module: &mut Module) -> bool {
@@ -28,13 +28,28 @@ fn fold_once(module: &mut Module) -> bool {
     !foldable.is_empty()
 }
 
-fn is_candidate(_module: &Module, cell: &Cell, consts: &HashMap<NetId, bool>) -> bool {
+fn is_candidate(module: &Module, cell: &Cell, consts: &HashMap<NetId, bool>) -> bool {
     is_pure_comb(&cell.kind)
+        // `exec` rebuilds every pin into a u128 and panics past 128 bits.
+        && cell.pins.values().all(|bits| bits.width() <= 128)
+        && !feeds_a_shift_amount(module, &cell.pins["out"])
         && cell
             .pins
             .iter()
             .filter(|(name, _)| **name != "out")
             .all(|(_, bits)| bits.nets.iter().all(|n| consts.contains_key(n)))
+}
+
+/// `validate` sizes a `Shl` exactly once its `b` pin is one Const cell's
+/// `out`, but worst-case otherwise. `lower` sized this `Shl` worst-case, so
+/// folding its amount's driver would make a valid module fail `validate`.
+// ponytail: such a Shl never folds even when its `a` is constant too; fold
+// the Shl in the same step as its amount if that ever matters.
+fn feeds_a_shift_amount(module: &Module, out: &Bits) -> bool {
+    module
+        .cells
+        .iter()
+        .any(|c| c.kind == CellKind::Shl && c.pins.get("b") == Some(out))
 }
 
 fn is_pure_comb(kind: &CellKind) -> bool {
