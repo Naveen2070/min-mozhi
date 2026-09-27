@@ -2046,12 +2046,18 @@ impl<'a> LowerCtx<'a> {
 
     /// Zero- or sign-extends `bits` to `width` (per its own `signed` flag),
     /// exactly like `Builtin::Extend`'s inline logic — a separate copy, not a
-    /// refactor of `Extend`, since `push_mux_cell` is the one caller that can
-    /// receive two operands of genuinely different widths (a `lower_match`
-    /// no-sibling fallback over constants of differing natural width; every
-    /// OTHER `push_mux_cell` caller already hands it equal-width operands by
-    /// construction, so this is a no-op there). Narrowing is not this
-    /// function's job: `width <= bits.width()` returns `bits` untouched.
+    /// refactor of `Extend`. `push_mux_cell`'s `lower_match` no-sibling
+    /// fallback used to be able to reach this with genuinely different
+    /// widths (an enum-variant literal's own natural width); since
+    /// `target_width` threading, every CHECKER-VALID program hands
+    /// `push_mux_cell` equal-width operands, so this is a no-op for real
+    /// source today. It stays load-bearing as a defensive width-agreement
+    /// step for any future/hand-built caller that doesn't go through the
+    /// checker (see `if_else_both_returning_produces_one_mux_selected_on_cond`
+    /// and its signed sibling in `ir/tests/lower_fn_inline.rs`, both of which
+    /// deliberately construct unequal-width operands and fail if this is
+    /// removed). Narrowing is not this function's job: `width <=
+    /// bits.width()` returns `bits` untouched.
     fn widen_to(
         &mut self,
         module: &mut Module,

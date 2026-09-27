@@ -1492,7 +1492,16 @@ Two independent root causes, both confirmed rather than left as hypotheses:
    `widen_to` helper (zero/sign-extends per the operand's own `signed` flag,
    the same logic `Builtin::Extend` already used inline, kept as a separate
    copy rather than a refactor of `Extend`), called on both operands before
-   `push_mux_cell` wires them in.
+   `push_mux_cell` wires them in. **Final-review correction (2026-09-27):**
+   root cause 3 below (`target_width` threading) independently closes off
+   `lower_match`'s own contribution to this for every CHECKER-VALID program —
+   after that fix, no real example still hands `push_mux_cell` unequal
+   widths. `widen_to` is not dead code: it stays load-bearing for any
+   hand-built/future caller that bypasses the checker (confirmed by a
+   regression test in `ir/tests/lower_fn_inline.rs` that fails if it's
+   removed), but "the one caller that can receive two operands of genuinely
+   different widths" should be read as "the one caller that COULD, for
+   source the checker no longer allows through unequal."
 2. **A second, independent bug in `sync_loop_search.mimz`/`traffic_light.mimz`
    /`saalaivilakku.mimz`'s shared machinery**, found only by chasing the
    probe's own `WidthMismatch` output past `enum_encoding.mimz`'s repro:
