@@ -238,9 +238,10 @@ mimz/ (workspace root)
 │   │           ├── mod.rs                     # Module/Cell/CellKind/NetId/Bits types; lower() entry
 │   │           ├── lower.rs                   # Design -> Module: cells, mux trees, fn inlining, blackbox
 │   │           ├── opt/                       # optimizer passes (Phase 2)
-│   │           │   ├── mod.rs                     # net_consts, driving_cell, run_to_fixpoint (shared plumbing)
+│   │           │   ├── mod.rs                     # net_consts, driving_cell, for_each_read_net_mut, run_to_fixpoint
 │   │           │   ├── const_fold.rs              # fold_constants: all-const-input cells -> Const
-│   │           │   └── dead_cell_elim.rs          # eliminate_dead_cells: unread comb cells + their nets
+│   │           │   ├── dead_cell_elim.rs          # eliminate_dead_cells: unread comb cells + their nets
+│   │           │   └── mux_simplify.rs            # simplify_muxes: const-select / same-data / same-select bypass
 │   │           ├── validate.rs                # 5 checks (drivers/undriven/widths/cycles/blackbox)
 │   │           ├── exec.rs                    # IR executor (Val-based) for differential testing
 │   │           ├── print_line.rs / parse_line.rs  # line-based text format (round-trips)
@@ -295,6 +296,7 @@ mimz/ (workspace root)
 │   ├── packages.rs                        # qualified cross-file references (a.b.Name)
 │   ├── showcase.rs                        # showcase/ demos (web playground, docs site)
 │   ├── ir_golden.rs                       # golden IR-text snapshots (tests/golden/ir/)
+│   ├── ir_opt_corpus.rs                   # all three IR optimizer passes over every example
 │   ├── ir_validation.rs                   # IR validation-rejection fixture corpus
 │   ├── golden/                            # pinned .v output per base example (88 .v: 71 module + 17 _tb.v, + 1 .vcd)
 │   │   └── ir/                                # golden IR-text dumps (5 fixtures)
