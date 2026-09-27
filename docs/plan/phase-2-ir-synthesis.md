@@ -106,16 +106,19 @@ language-feature work, now that Enum Variant Construction has shipped
   documented cross-file `import`/`include` standalone-probe artifact, not a
   real gap — those files never fail through the real multi-file `mimz
 build`/`mimz test` path. Exit criterion #2's "lower to IR, pass IR
-  validation" clause is now met for the full example corpus; the "survive
-  optimizer passes" clause stays open on top of that until the optimizer
-  itself exists — do not read this as the whole criterion being done, only
-  the lowering+validation portion.
+  validation" clause is now met for the full example corpus. The "survive
+  optimizer passes" clause is met for every example that lowers
+  `validate`-clean as of 2026-09-27 (`tests/ir_opt_corpus.rs`, see the
+  Optimizer section below). Resolving imports through `load_project` (which
+  that test does and this standalone probe did not) surfaced one more real
+  gap: `ripple_adder.mimz` panics in `ir::lower` (`docs/audit/gaps.md`
+  GAP-1).
 
 ### Optimizer (first passes)
 
 - [x] Constant folding / propagation
 - [x] Dead signal & dead cell elimination
-- [ ] Mux-tree simplification
+- [x] Mux-tree simplification
 
 > `ir::opt::fold_constants` (2026-09-24,
 > `docs/superpowers/specs/2026-09-24-ir-const-fold-design.local.md`) is a
@@ -132,6 +135,20 @@ build`/`mimz test` path. Exit criterion #2's "lower to IR, pass IR
 > full-liveness pass). After a removal it also drops the removed cells' nets
 > from `Module::nets`, renumbering the rest, and drops any `Module::signals`
 > entry that pointed at them.
+>
+> `ir::opt::simplify_muxes` (2026-09-27,
+> `docs/superpowers/specs/2026-09-27-ir-mux-simplify-design.local.md`) is
+> likewise standalone and **not yet wired**. It bypasses a mux with a
+> constant select, a mux bit whose two data bits agree, and an inner mux on
+> the same select, by rewiring readers; `eliminate_dead_cells` then removes
+> the bypassed muxes. `tests/ir_opt_corpus.rs` runs all three passes to a
+> fixpoint over every example that lowers `validate`-clean (216 of 224) and
+> checks the result stays `validate`-clean with identical outputs over 4
+> ticks; the passes cut the corpus's muxes from 1064 to 709. That meets exit
+> criterion #2's "survive optimizer passes" clause for those examples. The
+> other 8 are `alu.mimz` (two modules, no top named) and `ripple_adder.mimz`,
+> which panics in `ir::lower` (open GAP-1 sub-gap); extern-using designs are
+> also excluded until the open GAP-1 `validate` sub-gap is fixed.
 
 ### Synthesis path (pragmatic first)
 

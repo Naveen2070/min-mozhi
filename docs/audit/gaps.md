@@ -51,9 +51,13 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 ## GAP-1 (HIGH, architectural) - No IR; width/kind semantics implemented three times
 
 **Status:** OPEN. Filed 2026-08-02. As of 2026-09-23, every `ir::lower`/
-`ir::validate` sub-gap tracked under this entry is RESOLVED except one:
+`ir::validate` sub-gap tracked under this entry was RESOLVED except one:
 the arithmetic family's `signed` flag not round-tripping through IR text
-(below, filed 2026-09-21, latent/unreachable today). The gap's own
+(below, filed 2026-09-21, latent/unreachable today). The 2026-09-27
+optimizer work filed more OPEN sub-gaps below: extern instances fail
+`validate`, the known limits and non-goals of the optimizer passes,
+`ripple_adder.mimz` panicking in `ir::lower`, and an all-constant `if` not
+sized to its declared target. The gap's own
 headline claim — three consumers (checker/emitter/simulator) each
 carrying their own type model — stays OPEN regardless: the IR is a fourth
 consumer today, not yet a replacement for the other three's independent
@@ -1577,14 +1581,10 @@ None of these is reachable from a `validate`-clean module produced by
 `lower` today. They are recorded so later passes and the build-path wiring
 do not rediscover them. The review record is in `docs/log/2026-09-27.md`.
 
-- **`driving_cell` treats a black-box pin named `out` as a driver.**
-  `ir::opt::driving_cell` (`ir/opt/mod.rs`) maps every cell's `out` pin, and
-  a black box's pin names are the extern's own port names, so an extern
-  _input_ called `out` would be taken for a driver (last cell wins). That
-  module already fails `validate` with `MultipleDrivers`, and `out` is a
-  reserved keyword in every flavor, so no source program reaches it. Fix
-  before mux-tree simplification reuses the helper: skip
-  `CellKind::BlackBox` in `driving_cell`.
+- ~~**`driving_cell` treats a black-box pin named `out` as a driver.**~~
+  **RESOLVED 2026-09-27** (mux-simplify plan, Task 1): `driving_cell` now
+  skips `CellKind::BlackBox` cells. Pinned by
+  `driving_cell_skips_a_blackbox_pin_named_out`.
 - **Stray unreferenced nets are dropped only when a cell was removed.**
   `compact_nets` drops every net nothing mentions, including ones that were
   already orphaned before the pass, but it only runs when a cell was
@@ -1608,6 +1608,67 @@ do not rediscover them. The review record is in `docs/log/2026-09-27.md`.
 - **Not wired into any build or CLI path.** Like `fold_constants`, the pass
   is a standalone function until all three optimizer passes exist; see
   `docs/plan/phase-2-ir-synthesis.md`'s Optimizer section.
+
+### Sub-gap (2026-09-27, OPEN — mux-simplify spec non-goals): mux rewrites `ir::opt::simplify_muxes` does not do
+
+`simplify_muxes` covers R1 (constant select), R2 (identical data bit) and
+R3 (inner mux on the same select). Recorded so the next optimizer work does
+not rediscover them:
+
+- **R4, 1-bit constant-data mux.** `mux(s, 1, 0)` is `s`, `mux(s, 0, 1)` is
+  `LogicNot(s)`. The first is a substitution; the second rewrites the cell's
+  kind in place, which `simplify_muxes` never does.
+- **R5, match-chain arm merging.** `mux(s1, x, mux(s2, x, y))` is
+  `mux(s1 || s2, x, y)`. It adds an `Or`/`LogicOr` cell, so it can grow the
+  netlist; it needs a cost rule first. `lower_match`'s `Eq`/`Mux` chains are
+  where it would pay off.
+- **Inverted select.** An inner mux whose select is `LogicNot(s)` is the
+  outer mux on `s` with its arms swapped. R3 only matches the identical
+  select net.
+- **Only `validate`-clean input.** Designs with an extern instance fail
+  `validate` today (sub-gap above), so none of the three passes runs on them.
+
+### Sub-gap (2026-09-27, OPEN — found by `tests/ir_opt_corpus.rs`): `ir::lower` panics on `ripple_adder.mimz`
+
+**What.** All four flavors of `examples/*/ripple_adder.mimz` panic in
+`ir::lower` (`crates/mimz-core/src/ir/lower.rs:185`, `resolve`) with
+``no driver recorded for signal `fa__-1_cout` ``. The source is
+`let fa[i] = FullAdder() { ..., cin: if i == 0 { cin } else { fa[i - 1].cout } }`
+inside an unrolled `repeat`. `lower` lowers both branches of the `if` even
+though `i == 0` is a compile-time constant after unrolling, so at `i = 0`
+the dead `else` branch asks for instance `fa[-1]`, which does not exist.
+
+**Why it was not seen before.** The 2026-09-23 coverage probe lowered each
+example standalone and could not resolve this file's `include
+lib.full_adder`, so it counted it among the "cross-file import artifact"
+failures. `tests/ir_opt_corpus.rs` loads through `mimz::project::load_project`,
+which resolves the include and reaches `lower`. The test catches the panic
+and counts the file as skipped.
+
+**Fix shape (not done).** Const-fold an `if` expression's condition during
+lowering and lower only the taken branch when it folds, the way
+`lower_expr_sized` already folds constant operands. `simplify_muxes`' R1
+would remove the mux afterwards, but cannot help here: the panic happens
+while lowering the dead branch.
+
+### Sub-gap (2026-09-27, OPEN — found by mux-simplify Task 2): an all-constant `if` expression is not sized to its declared target
+
+**What.** `out o: bits[8]` with `o = if c { 5 } else { 5 }` passes the
+checker, but `ir::validate` rejects the lowered module with
+`PortWidthMismatch { port: "o", declared: 8, found: 3 }`. Both branches are
+constants, so neither has a sized sibling, and they stay at their natural
+3-bit width.
+
+**Why.** The 2026-09-23 mux-width-gaps fix (root cause 3 in the sub-gap
+above) threads the declared `target_width` into `lower_match` through an
+`ExprKind::Match` arm in `lower_expr_sized`. There is no matching arm for
+`ExprKind::IfExpr` (its two-constant-branches case, `lower.rs` around line
+669, lowers both at natural width), so the same "declared type stamps directly" rule never
+reaches an all-constant `if`. No shipped example hits it; the
+`ir/tests/opt_mux_simplify.rs` test that found it uses `bits[3]` instead.
+
+**Fix shape (not done).** An `ExprKind::IfExpr` arm in `lower_expr_sized` that
+sizes both branches to the target width, mirroring the `Match` arm.
 
 ---
 

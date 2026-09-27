@@ -22,9 +22,32 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1509 tests** as of 2026-09-27 (`cargo test --workspace`; the count is
+**1526 tests** as of 2026-09-27 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
-+13 from the new `crates/mimz-core/src/ir/tests/opt_dead_cell_elim.rs`
++16 from the new `crates/mimz-core/src/ir/tests/opt_mux_simplify.rs` and +1
+from the new `tests/ir_opt_corpus.rs`
+(`docs/superpowers/plans/2026-09-27-ir-mux-simplify.local.md`), covering
+`ir::opt::simplify_muxes`, `ir::opt::for_each_read_net_mut`, the
+`BlackBox`-skipping `ir::opt::driving_cell`, and all three optimizer passes
+over the example corpus:
+`for_each_read_net_mut_rewrites_readers_and_skips_drivers`,
+`driving_cell_skips_a_blackbox_pin_named_out`,
+`a_constant_one_select_bypasses_to_a`,
+`a_constant_zero_select_bypasses_to_b`,
+`a_chain_of_bypassed_muxes_resolves_to_the_source`,
+`a_parameter_select_folds_then_bypasses`,
+`identical_data_nets_bypass_the_mux`,
+`equal_constant_data_bits_bypass_the_mux`,
+`only_the_identical_bits_of_a_hold_mux_are_bypassed`,
+`a_named_wire_over_a_bypassed_mux_stays_readable`,
+`leaves_a_mux_with_a_live_select_and_different_data_alone`,
+`a_second_call_reports_no_change`,
+`r3_skips_an_inner_mux_on_the_a_side`,
+`r3_skips_an_inner_mux_on_the_b_side`,
+`r3_keeps_an_inner_mux_that_has_another_reader`,
+`r3_leaves_nested_muxes_on_different_selects_alone` and
+`optimizer_passes_preserve_every_example`.
+Previously, as of 2026-09-27 at 1509: +13 from the new `crates/mimz-core/src/ir/tests/opt_dead_cell_elim.rs`
 (`docs/superpowers/plans/2026-09-27-ir-dead-cell-elim.local.md`), covering
 `ir::opt::eliminate_dead_cells` and `ir::opt::driving_cell`:
 `driving_cell_maps_out_nets_only`, `removes_the_cell_of_an_unread_wire`,
@@ -301,7 +324,7 @@ against a bare bundle-typed `fn` parameter inside that fn's own body
 
 | Where it lives                                      |    Count | Kind                                                   |
 | --------------------------------------------------- | -------: | ------------------------------------------------------ |
-| `crates/mimz-core/src/**` (lib unit)                |      852 | in-process, `#[cfg(test)] mod tests`                   |
+| `crates/mimz-core/src/**` (lib unit)                |      952 | in-process, `#[cfg(test)] mod tests`                   |
 | `crates/mimz-sim/src/**` (lib unit)                 |       90 | in-process                                             |
 | `src/**` (mimz shell crate, lib unit)               |       51 | in-process (`config`, `emulate`, `project`)            |
 | `src/lsp.rs` + `src/main.rs` (bin/lib `mod lsp`)    |        7 | in-process (`lsp`)                                     |
@@ -324,6 +347,7 @@ against a bare bundle-typed `fn` parameter inside that fn's own body
 | `tests/grammar_sync.rs`                             |        6 | workspace integration (spec staleness guard)           |
 | `tests/icarus.rs`                                   |       16 | differential (needs `iverilog`)                        |
 | `tests/ir_golden.rs`                                |        5 | workspace integration (golden IR-text snapshots)       |
+| `tests/ir_opt_corpus.rs`                            |        1 | workspace integration (IR optimizer over the corpus)   |
 | `tests/ir_validation.rs`                            |        6 | workspace integration (IR validation-rejection corpus) |
 | `tests/lab_lessons.rs`                              |        1 | workspace integration (lab content gate, site plan W6) |
 | `tests/lsp.rs`                                      |        1 | workspace integration (smoke)                          |
