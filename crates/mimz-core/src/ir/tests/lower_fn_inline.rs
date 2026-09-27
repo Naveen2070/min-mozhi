@@ -1,10 +1,12 @@
 //! Task 9: inlining user-defined `fn` calls at lowering time.
 
 use super::{ident, w};
-use crate::ast::{Expr, ExprKind, FnParam, FnStmt, FuncDecl, Ident, LocalLet, Type};
+use crate::ast::{Builtin, Expr, ExprKind, FnParam, FnStmt, FuncDecl, Ident, LocalLet, Type};
 use crate::elaborate::{Design, Signal};
+use crate::ir::exec::Executor;
 use crate::ir::{Bits, Cell, CellKind, Module, lower};
 use crate::span::Span;
+use crate::value::Val;
 use std::cell::Cell as StdCell;
 use std::collections::{BTreeMap, HashMap};
 
@@ -221,6 +223,88 @@ fn if_else_both_returning_produces_one_mux_selected_on_cond() {
         "mux `b`'s low bits are still the else branch (x)"
     );
     assert_eq!(*find_port(&module, "out"), mux.pins["out"]);
+}
+
+fn signed_cast(e: Expr) -> Expr {
+    Expr {
+        kind: ExprKind::Call {
+            func: Builtin::SignedCast,
+            args: vec![e],
+        },
+        span: Span::default(),
+    }
+}
+
+/// Final-review finding (2026-09-23 plan, mux-width-gaps): `widen_to`'s
+/// SIGN-extend branch (`bits.signed` true) had no test reaching it through
+/// `push_mux_cell` — every real, checker-valid `match`/`if` this session
+/// closed off routes through `target_width` threading before it can hand
+/// `push_mux_cell` two different-width operands. `signed(x) + signed(x)`
+/// (9-bit, grown by `Add`) vs `signed(x)` alone (8-bit) is the same
+/// hand-built, checker-bypassing shape as the unsigned test above, but
+/// signed — it reaches `widen_to`'s `bits.signed` branch directly and
+/// checks the REPLICATED SIGN BIT, not just the resulting width.
+#[test]
+fn if_else_both_returning_signed_operands_of_different_widths_sign_extends() {
+    let func = FuncDecl {
+        name: id("f"),
+        params: vec![fn_param("x"), fn_param("sel")],
+        ret: Type::Bit,
+        stmts: vec![FnStmt::If {
+            cond: ident("sel"),
+            then: vec![FnStmt::Return(add_expr(
+                signed_cast(ident("x")),
+                signed_cast(ident("x")),
+            ))],
+            els: Some(vec![FnStmt::Return(signed_cast(ident("x")))]),
+        }],
+        // Unreachable (every path returns) — placeholder tail, never lowered.
+        tail: ident("x"),
+        span: Span::default(),
+    };
+    let design = base_design(func, fn_call("f", vec![ident("a"), ident("sel")]));
+    let module = lower(&design);
+
+    let mux_cells: Vec<&Cell> = module
+        .cells
+        .iter()
+        .filter(|c| c.kind == CellKind::Mux)
+        .collect();
+    assert_eq!(mux_cells.len(), 1, "one Mux for the if/else");
+    let mux = mux_cells[0];
+    assert!(
+        mux.pins["a"].signed && mux.pins["b"].signed,
+        "precondition: both operands are signed"
+    );
+    assert_eq!(
+        mux.pins["a"].width(),
+        9,
+        "precondition: then-branch (x+x) grew by one bit"
+    );
+    assert_eq!(
+        mux.pins["b"].width(),
+        9,
+        "widen_to must widen the else branch (x) to match"
+    );
+
+    // a = 0x80 = -128 as a signed 8-bit `x`.
+    let mut ex = Executor::new(&module);
+    ex.set_input("a", Val::new(0x80, 8, false));
+    ex.set_input("sel", Val::new(0, 1, false)); // sel=0 -> Mux picks `b` (else, plain x)
+    ex.tick();
+    assert_eq!(
+        ex.get_output("out").bits,
+        crate::bits::Bits::Small(0x180),
+        "sign-extending -128 to 9 bits must replicate the sign bit (0x180 = 0b1_1000_0000), not zero-pad (0x080)"
+    );
+
+    ex.set_input("sel", Val::new(1, 1, false)); // sel=1 -> Mux picks `a` (then, x+x)
+    ex.tick();
+    assert_eq!(
+        ex.get_output("out").bits,
+        crate::bits::Bits::Small(0x100),
+        "-128 + -128 = -256, which is 0x100 at 9 signed bits"
+    );
 }
 
 fn int_lit(value: u128) -> Expr {
