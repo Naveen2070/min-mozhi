@@ -15,6 +15,7 @@ mod lower_regs;
 mod lower_sync_loop_width;
 mod lower_unary_concat_slice;
 mod opt_const_fold;
+mod opt_dead_cell_elim;
 mod parse_line;
 mod print_line;
 mod print_sexpr;
