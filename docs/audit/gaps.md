@@ -1546,6 +1546,69 @@ mechanically-enforced test-count badge (synced separately, see below);
 fuzz 8/8 (the clocked IR-vs-kernel leg specifically confirms the `+%` change
 has no semantic divergence, not just a cosmetic Verilog diff).
 
+### Sub-gap (2026-09-27, OPEN — dead-cell-elim final review): every module with an extern instance fails `ir::validate`, so the optimizer cannot run on it
+
+**What.** `validate()`'s Check 1 (`crates/mimz-core/src/ir/validate.rs`,
+the `is_output` match around line 196) counts only pins named `out`, `q` or
+`rdata` as drivers. A `CellKind::BlackBox` cell's pins carry the extern
+module's own port names, so an extern **output** pin (for example
+`clk_out` in `ir/tests/lower_blackbox.rs`'s `pll_design`) is never
+registered as driven. Its freshly allocated nets then fail with
+`UndrivenNet`. So any design that instantiates an `extern module` with an
+output port is `validate`-dirty straight out of `lower`.
+
+**Why it matters now.** The IR optimizer passes (`ir::opt::fold_constants`,
+`ir::opt::eliminate_dead_cells`) are only specified and tested for
+`validate`-clean modules. Until this is fixed, extern-using designs cannot
+meet that precondition, and a validate gate in front of the future wired-in
+optimizer would reject them. It predates the optimizer (it comes from
+`lower`/`validate`); the dead-cell-elim final review surfaced it.
+
+**Fix shape (not done).** Teach Check 1 which `BlackBox` pins are outputs
+and register those nets as driven by the black-box cell. Today
+`Module::extern_decls` is `BTreeMap<String, Vec<(String, u32)>>` (port name
+and width only), so it first needs each port's direction, which `lower`
+has from the extern declaration. A module without an `extern_decls` entry
+(hand-parsed IR) keeps today's behavior.
+
+### Sub-gap (2026-09-27, OPEN — dead-cell-elim final review): known limits of `ir::opt::eliminate_dead_cells`
+
+None of these is reachable from a `validate`-clean module produced by
+`lower` today. They are recorded so later passes and the build-path wiring
+do not rediscover them. The review record is in `docs/log/2026-09-27.md`.
+
+- **`driving_cell` treats a black-box pin named `out` as a driver.**
+  `ir::opt::driving_cell` (`ir/opt/mod.rs`) maps every cell's `out` pin, and
+  a black box's pin names are the extern's own port names, so an extern
+  _input_ called `out` would be taken for a driver (last cell wins). That
+  module already fails `validate` with `MultipleDrivers`, and `out` is a
+  reserved keyword in every flavor, so no source program reaches it. Fix
+  before mux-tree simplification reuses the helper: skip
+  `CellKind::BlackBox` in `driving_cell`.
+- **Stray unreferenced nets are dropped only when a cell was removed.**
+  `compact_nets` drops every net nothing mentions, including ones that were
+  already orphaned before the pass, but it only runs when a cell was
+  removed. Such nets only exist in `validate`-dirty modules, so there is no
+  visible effect; the pass's `true` return means "cells removed", not "nets
+  changed".
+- **Partly-dead named wires are untested.** A `Module::signals` entry that
+  only partly overlaps the dropped nets is removed whole. That is correct
+  (signals are not liveness roots), but only the fully-dead case has a test.
+- **Dead registers, memories and black boxes are always kept.** Removing a
+  stateful cell nobody reads needs a separate full-liveness pass. It was a
+  spec non-goal. Cost until then: larger netlists.
+- **Unread named wires lose their `signals` entry.** After the pass,
+  `ir::exec::Executor::get_output` on such a name panics. No current caller
+  asks for a removed name. A future debug or trace consumer must read those
+  names before the pass runs, or tolerate their absence.
+- **An out-of-range `NetId` panics instead of erroring.** `compact_nets`
+  indexes its `used` table by `NetId`, so a hand-built module whose `Bits`
+  point past `Module::nets` panics. `lower` and `parse_line` both size
+  `nets` correctly, so no real input path reaches it.
+- **Not wired into any build or CLI path.** Like `fold_constants`, the pass
+  is a standalone function until all three optimizer passes exist; see
+  `docs/plan/phase-2-ir-synthesis.md`'s Optimizer section.
+
 ---
 
 ## GAP-2 (MEDIUM) - Simulator is 2-state with a whole-value unknown flag; no X/Z, no tri-state

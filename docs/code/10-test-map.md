@@ -22,9 +22,23 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1496 tests** as of 2026-09-27 (`cargo test --workspace`; the count is
+**1509 tests** as of 2026-09-27 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
-+1 from `crates/mimz-core/src/ir/tests/lower_fn_inline.rs`'s
++13 from the new `crates/mimz-core/src/ir/tests/opt_dead_cell_elim.rs`
+(`docs/superpowers/plans/2026-09-27-ir-dead-cell-elim.local.md`), covering
+`ir::opt::eliminate_dead_cells` and `ir::opt::driving_cell`:
+`driving_cell_maps_out_nets_only`, `removes_the_cell_of_an_unread_wire`,
+`removes_a_whole_unread_chain_in_one_call`,
+`keeps_a_wire_that_feeds_an_output_port`,
+`keeps_every_input_of_a_register_nobody_reads`,
+`a_removal_leaves_no_undriven_net`,
+`drops_the_signals_entry_of_an_unread_named_wire`,
+`keeps_every_out_net_of_a_partly_read_cell`,
+`removes_the_inputs_fold_constants_orphans`,
+`keeps_a_cell_that_only_feeds_a_mem_read_address`,
+`keeps_the_driver_of_a_register_clock`,
+`keeps_the_driver_of_a_blackbox_pin` and `a_second_call_reports_no_change`.
+Previously, as of 2026-09-27 at 1496: +1 from `crates/mimz-core/src/ir/tests/lower_fn_inline.rs`'s
 `if_else_both_returning_signed_operands_of_different_widths_sign_extends`, a
 final-review fix (2026-09-27) for the 2026-09-23 mux-width-gaps plan:
 `widen_to`'s sign-extend branch had no test reaching it through
