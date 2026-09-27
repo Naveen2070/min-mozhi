@@ -22,9 +22,18 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1495 tests** as of 2026-09-24 (`cargo test --workspace`; the count is
+**1496 tests** as of 2026-09-27 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
-+11 from the new `crates/mimz-core/src/ir/tests/opt_const_fold.rs`
++1 from `crates/mimz-core/src/ir/tests/lower_fn_inline.rs`'s
+`if_else_both_returning_signed_operands_of_different_widths_sign_extends`, a
+final-review fix (2026-09-27) for the 2026-09-23 mux-width-gaps plan:
+`widen_to`'s sign-extend branch had no test reaching it through
+`push_mux_cell` before this — every checker-valid `match`/`if` now routes
+through `target_width` threading first, so the gap was only reachable via a
+hand-built, checker-bypassing shape (the same one
+`if_else_both_returning_produces_one_mux_selected_on_cond` already used,
+made signed). Previously, as of 2026-09-24: +11 from the new
+`crates/mimz-core/src/ir/tests/opt_const_fold.rs`
 (`docs/superpowers/plans/2026-09-24-ir-const-fold.local.md`) —
 `net_consts_maps_every_const_driven_net_to_its_bit`,
 `folds_an_add_whose_inputs_are_both_constant`,
