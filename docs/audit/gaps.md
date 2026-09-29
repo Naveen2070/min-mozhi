@@ -1627,6 +1627,17 @@ not rediscover them:
   select net.
 - **Only `validate`-clean input.** Designs with an extern instance fail
   `validate` today (sub-gap above), so none of the three passes runs on them.
+- **A mux that feeds a `Shl` amount is never bypassed** (final-review fix,
+  2026-09-29). `validate` sizes a `Shl` exactly once its `b` pin is one
+  `Const` cell's `out`, but `lower` sized it worst-case, so pointing `b` at
+  the constant behind the mux turned a valid module invalid. The guard
+  keeps the whole mux, so its other readers are not bypassed either.
+  Pinned by `never_bypasses_a_mux_that_feeds_a_shift_amount`.
+- **R2 is more precise than `Executor` about unknown values.** `Executor`
+  marks a whole value unknown when any bit is, and a mux passes that to
+  every `out` bit. After an R2 bypass the bypassed bits read their source
+  directly and can come out known. Fine as hardware; a future IR-level
+  differential harness over extern designs must allow for it.
 
 ### Sub-gap (2026-09-27, OPEN — found by `tests/ir_opt_corpus.rs`): `ir::lower` panics on `ripple_adder.mimz`
 
