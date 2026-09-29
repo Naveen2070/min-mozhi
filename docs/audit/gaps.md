@@ -54,10 +54,10 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 `ir::validate` sub-gap tracked under this entry was RESOLVED except one:
 the arithmetic family's `signed` flag not round-tripping through IR text
 (below, filed 2026-09-21, latent/unreachable today). The 2026-09-27
-optimizer work filed more OPEN sub-gaps below: extern instances fail
-`validate`, the known limits and non-goals of the optimizer passes,
-`ripple_adder.mimz` panicking in `ir::lower`, and an all-constant `if` not
-sized to its declared target. The gap's own
+optimizer work filed more sub-gaps below; the known limits and non-goals of
+the optimizer passes stay OPEN, while extern instances failing `validate`,
+`ripple_adder.mimz` panicking in `ir::lower` and an all-constant `if` not
+sized to its declared target were RESOLVED 2026-09-29. The gap's own
 headline claim — three consumers (checker/emitter/simulator) each
 carrying their own type model — stays OPEN regardless: the IR is a fourth
 consumer today, not yet a replacement for the other three's independent
@@ -1550,7 +1550,7 @@ mechanically-enforced test-count badge (synced separately, see below);
 fuzz 8/8 (the clocked IR-vs-kernel leg specifically confirms the `+%` change
 has no semantic divergence, not just a cosmetic Verilog diff).
 
-### Sub-gap (2026-09-27, OPEN — dead-cell-elim final review): every module with an extern instance fails `ir::validate`, so the optimizer cannot run on it
+### Sub-gap (2026-09-27, RESOLVED 2026-09-29 — dead-cell-elim final review): every module with an extern instance fails `ir::validate`, so the optimizer cannot run on it
 
 **What.** `validate()`'s Check 1 (`crates/mimz-core/src/ir/validate.rs`,
 the `is_output` match around line 196) counts only pins named `out`, `q` or
@@ -1574,6 +1574,19 @@ and register those nets as driven by the black-box cell. Today
 and width only), so it first needs each port's direction, which `lower`
 has from the extern declaration. A module without an `extern_decls` entry
 (hand-parsed IR) keeps today's behavior.
+
+**Fixed 2026-09-29** (`docs/superpowers/plans/2026-09-29-ir-lowering-validate-fixes.local.md`,
+Task 3). `elaborate::ExternInstance::ports` and `Module::extern_decls` now
+carry each port's `Dir`, filled where elaboration already had it
+(`flatten_extern_instance`). `validate`'s Check 1 registers every declared
+`Out` pin of a `BlackBox` as driven by that cell, so it also counts toward
+`MultipleDrivers`. A module with no `extern_decls` entry (hand-parsed IR)
+is unchanged. Tests: `a_lowered_extern_instance_validates_clean`,
+`a_lowered_extern_instance_survives_the_optimizer`,
+`an_extern_output_also_driven_by_a_cell_is_a_multiple_driver`,
+`an_extern_output_with_no_declared_shape_stays_undriven`, and
+`tests/ir_opt_corpus.rs`, which now also runs `tests/fixtures/extern/`
+(`pll.mimz`, `pll_alias.mimz`) through all three passes.
 
 ### Sub-gap (2026-09-27, OPEN — dead-cell-elim final review): known limits of `ir::opt::eliminate_dead_cells`
 
@@ -1625,8 +1638,9 @@ not rediscover them:
 - **Inverted select.** An inner mux whose select is `LogicNot(s)` is the
   outer mux on `s` with its arms swapped. R3 only matches the identical
   select net.
-- **Only `validate`-clean input.** Designs with an extern instance fail
-  `validate` today (sub-gap above), so none of the three passes runs on them.
+- **Only `validate`-clean input.** Designs with an extern instance used to
+  fail `validate` (sub-gap above); since 2026-09-29 they are clean and in
+  the corpus test.
 - **A mux that feeds a `Shl` amount is never bypassed** (final-review fix,
   2026-09-29). `validate` sizes a `Shl` exactly once its `b` pin is one
   `Const` cell's `out`, but `lower` sized it worst-case, so pointing `b` at
@@ -1639,7 +1653,7 @@ not rediscover them:
   directly and can come out known. Fine as hardware; a future IR-level
   differential harness over extern designs must allow for it.
 
-### Sub-gap (2026-09-27, OPEN — found by `tests/ir_opt_corpus.rs`): `ir::lower` panics on `ripple_adder.mimz`
+### Sub-gap (2026-09-27, RESOLVED 2026-09-29 — found by `tests/ir_opt_corpus.rs`): `ir::lower` panics on `ripple_adder.mimz`
 
 **What.** All four flavors of `examples/*/ripple_adder.mimz` panic in
 `ir::lower` (`crates/mimz-core/src/ir/lower.rs:185`, `resolve`) with
@@ -1662,7 +1676,21 @@ lowering and lower only the taken branch when it folds, the way
 would remove the mux afterwards, but cannot help here: the panic happens
 while lowering the dead branch.
 
-### Sub-gap (2026-09-27, OPEN — found by mux-simplify Task 2): an all-constant `if` expression is not sized to its declared target
+**Fixed 2026-09-29** (same plan, Task 2). The new `LowerCtx::lower_if`
+evaluates the condition with `const_eval_wide` against `visible_consts`
+and, when it folds, lowers only the taken branch, mirroring
+`emit_verilog`'s `if_expr_subst`. All four `ripple_adder.mimz` flavors now
+lower and pass the corpus test. Test:
+`a_constant_condition_never_lowers_its_dead_branch`.
+
+**Known limit.** When the taken branch is a constant, the dead branch is
+not, and there is no declared target width, the constant still needs its
+sibling's width, so both branches are lowered as before and the resulting
+mux has a constant select (which `simplify_muxes` R1 removes). In that one
+shape a phantom dead branch (`if i == 0 { 0 } else { fa[i - 1].cout }`)
+would still panic. No example has it.
+
+### Sub-gap (2026-09-27, RESOLVED 2026-09-29 — found by mux-simplify Task 2): an all-constant `if` expression is not sized to its declared target
 
 **What.** `out o: bits[8]` with `o = if c { 5 } else { 5 }` passes the
 checker, but `ir::validate` rejects the lowered module with
@@ -1680,6 +1708,13 @@ reaches an all-constant `if`. No shipped example hits it; the
 
 **Fix shape (not done).** An `ExprKind::IfExpr` arm in `lower_expr_sized` that
 sizes both branches to the target width, mirroring the `Match` arm.
+
+**Fixed 2026-09-29** (same plan, Task 1). `lower_expr_sized` gained an
+`ExprKind::IfExpr` arm into the new `LowerCtx::lower_if`, which lowers two
+constant branches with `lower_expr_sized` at the target width when one is
+given. Tests: `an_all_constant_if_is_sized_to_its_declared_port`,
+`an_all_constant_if_with_different_branches_keeps_both_values`; the
+`opt_mux_simplify.rs` test that found it is back on `bits[8]`.
 
 ---
 

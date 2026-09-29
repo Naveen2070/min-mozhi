@@ -246,8 +246,10 @@ const AB: Inputs<'static> = &[("a", 0x5A, 8), ("b", 0x3C, 8)];
 
 #[test]
 fn a_parameter_select_folds_then_bypasses() {
+    // Through a wire: `lower` folds an `if` whose condition is itself a
+    // compile-time constant (`lower_if`), which would leave no mux here.
     let mut module = lower_valid(
-        "module M(MODE: int = 0) {\n  in a: bits[8]\n  in b: bits[8]\n  out o: bits[8]\n  o = if MODE == 0 { a } else { b }\n}\n",
+        "module M(MODE: int = 0) {\n  in a: bits[8]\n  in b: bits[8]\n  out o: bits[8]\n  wire m: bit = MODE == 0\n  o = if m { a } else { b }\n}\n",
     );
     assert_eq!(mux_count(&module), 1, "precondition");
     let before = run(&module, AB, "o");
@@ -285,10 +287,8 @@ fn identical_data_nets_bypass_the_mux() {
 
 #[test]
 fn equal_constant_data_bits_bypass_the_mux() {
-    // `bits[3]`, 5's own width: `lower` does not yet size an all-constant
-    // `if` to a wider declared port (docs/audit/gaps.md, GAP-1).
     let mut module =
-        lower_valid("module M {\n  in c: bit\n  out o: bits[3]\n  o = if c { 5 } else { 5 }\n}\n");
+        lower_valid("module M {\n  in c: bit\n  out o: bits[8]\n  o = if c { 5 } else { 5 }\n}\n");
     let mux = module
         .cells
         .iter()

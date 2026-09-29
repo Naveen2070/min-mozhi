@@ -327,6 +327,16 @@ impl<'a> LowerCtx<'a> {
                     arrays,
                     Some(target_width),
                 ),
+                ExprKind::IfExpr { cond, then, els } => self.lower_if(
+                    module,
+                    cond,
+                    then,
+                    els,
+                    e.span,
+                    locals,
+                    arrays,
+                    Some(target_width),
+                ),
                 _ => self.lower_expr(module, e, locals, arrays),
             },
         }
@@ -646,32 +656,7 @@ impl<'a> LowerCtx<'a> {
             // kinds.rs` derives the same `Kind` the same way) — see that
             // helper's own doc for why a constant branch needs `||`.
             ExprKind::IfExpr { cond, then, els } => {
-                let sel = self.lower_expr(module, cond, locals, arrays);
-                // Lower the NON-constant branch first so the constant one has
-                // a real sibling to adopt — `lower_sibling`'s whole job (F2).
-                // Two REAL branches are already reconciled by the checker, and
-                // two CONSTANT branches have no sibling to adopt from at all,
-                // so both of those fall through unchanged.
-                let (a, b) = match (
-                    self.is_const_foldable(then, locals),
-                    self.is_const_foldable(els, locals),
-                ) {
-                    (true, false) => {
-                        let b = self.lower_expr(module, els, locals, arrays);
-                        let a = self.lower_sibling(module, then, Some(&b), locals, arrays);
-                        (a, b)
-                    }
-                    (false, true) => {
-                        let a = self.lower_expr(module, then, locals, arrays);
-                        let b = self.lower_sibling(module, els, Some(&a), locals, arrays);
-                        (a, b)
-                    }
-                    _ => (
-                        self.lower_expr(module, then, locals, arrays),
-                        self.lower_expr(module, els, locals, arrays),
-                    ),
-                };
-                self.push_mux_cell(module, sel, a, b, e.span)
+                self.lower_if(module, cond, then, els, e.span, locals, arrays, None)
             }
             // `base[i]` is dual-use: a full-width memory-word read when
             // `base` names a `design.mems` entry, a single-bit select
@@ -1793,6 +1778,86 @@ impl<'a> LowerCtx<'a> {
         out
     }
 
+    /// `if cond { then } else { els }` as one `Mux`. A constant branch takes
+    /// its width from a real sibling (`lower_sibling`); when both branches
+    /// are constant there is no sibling, so a declared `target_width` sizes
+    /// them, the same rule `lower_match` applies to all-constant arms.
+    /// A condition that folds at compile time lowers only the taken branch.
+    #[allow(clippy::too_many_arguments)]
+    fn lower_if(
+        &mut self,
+        module: &mut Module,
+        cond: &Expr,
+        then: &Expr,
+        els: &Expr,
+        span: crate::span::Span,
+        locals: Option<&HashMap<String, Bits>>,
+        arrays: Option<&HashMap<String, u32>>,
+        target_width: Option<u32>,
+    ) -> Bits {
+        // A condition that folds at compile time (typically a `repeat`
+        // variable after unrolling) takes only its branch, as
+        // `emit_verilog`'s `if_expr_subst` does: the dead one can name an
+        // instance that does not exist (`fa[i - 1]` at `i == 0`). Evaluated in
+        // its own statement so `visible_consts`' borrow of `self` ends before
+        // the branch is lowered.
+        let folded_cond = crate::value::const_eval_wide(cond, &self.visible_consts(locals)).ok();
+        if let Some(c) = folded_cond {
+            let (taken, dead) = if c.is_zero() {
+                (els, then)
+            } else {
+                (then, els)
+            };
+            match (
+                self.is_const_foldable(taken, locals),
+                self.is_const_foldable(dead, locals),
+                target_width,
+            ) {
+                (true, _, Some(w)) => {
+                    return self.lower_expr_sized(module, taken, locals, arrays, w);
+                }
+                (false, _, _) | (true, true, None) => {
+                    return self.lower_expr(module, taken, locals, arrays);
+                }
+                // ponytail: a constant taken branch needs its real sibling's
+                // width, so this shape still lowers both branches and would
+                // still panic on a phantom dead branch; no example has it.
+                (true, false, None) => {}
+            }
+        }
+        let sel = self.lower_expr(module, cond, locals, arrays);
+        // Lower the NON-constant branch first so the constant one has a real
+        // sibling to adopt — `lower_sibling`'s whole job (F2).
+        let (a, b) = match (
+            self.is_const_foldable(then, locals),
+            self.is_const_foldable(els, locals),
+            target_width,
+        ) {
+            (true, false, _) => {
+                let b = self.lower_expr(module, els, locals, arrays);
+                let a = self.lower_sibling(module, then, Some(&b), locals, arrays);
+                (a, b)
+            }
+            (false, true, _) => {
+                let a = self.lower_expr(module, then, locals, arrays);
+                let b = self.lower_sibling(module, els, Some(&a), locals, arrays);
+                (a, b)
+            }
+            (true, true, Some(w)) => (
+                self.lower_expr_sized(module, then, locals, arrays, w),
+                self.lower_expr_sized(module, els, locals, arrays, w),
+            ),
+            // Two real branches are already reconciled by the checker; two
+            // constant branches with no declared target keep their natural
+            // widths.
+            _ => (
+                self.lower_expr(module, then, locals, arrays),
+                self.lower_expr(module, els, locals, arrays),
+            ),
+        };
+        self.push_mux_cell(module, sel, a, b, span)
+    }
+
     /// Lowers `match scrutinee { arms }` as a reverse fold of nested `Mux`
     /// cells: the last arm (or any arm containing `Pattern::Wildcard`) is
     /// the unconditional default, folded in first, then earlier arms are
@@ -2457,7 +2522,7 @@ pub fn lower(design: &Design) -> Module {
         let pins: BTreeMap<&'static str, Bits> = ext
             .ports
             .iter()
-            .map(|(port_name, sig)| {
+            .map(|(port_name, sig, _)| {
                 let bits = ctx.resolved.get(&sig.name).unwrap_or_else(|| {
                     panic!(
                         "extern instance port `{port_name}` (net `{}`) was not pre-resolved",
@@ -2479,7 +2544,7 @@ pub fn lower(design: &Design) -> Module {
             ext.module_name.clone(),
             ext.ports
                 .iter()
-                .map(|(n, s)| (n.clone(), s.width.bits))
+                .map(|(n, s, dir)| (n.clone(), s.width.bits, *dir))
                 .collect(),
         );
     }
