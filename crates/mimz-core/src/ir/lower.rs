@@ -865,6 +865,10 @@ impl<'a> LowerCtx<'a> {
                 let (ret_width, ret_signed) =
                     crate::value::type_width(&func.ret, &self.design.consts, func.span)
                         .expect("checker guarantees a fn's declared return type resolves");
+                // The callee gets its own `local_consts` scope. The args were
+                // lowered above in the caller's scope; left in place, a
+                // caller's `let k = 0` would decide a callee's parameter `k`.
+                let caller_consts = std::mem::take(&mut self.local_consts);
                 let mut out = self.lower_fn_stmts(
                     module,
                     &func.stmts,
@@ -874,6 +878,7 @@ impl<'a> LowerCtx<'a> {
                     ret_width,
                     &func.params,
                 );
+                self.local_consts = caller_consts;
                 // A call's `Ty` IS the fn's DECLARED return type — the checker
                 // forces the body to match it, so this is an assignment, not a
                 // merge. It matters because a return/tail path can be a bare
