@@ -22,9 +22,9 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1526 tests** as of 2026-09-27 (`cargo test --workspace`; the count is
+**1527 tests** as of 2026-09-29 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
-+16 from the new `crates/mimz-core/src/ir/tests/opt_mux_simplify.rs` and +1
++17 from the new `crates/mimz-core/src/ir/tests/opt_mux_simplify.rs` and +1
 from the new `tests/ir_opt_corpus.rs`
 (`docs/superpowers/plans/2026-09-27-ir-mux-simplify.local.md`), covering
 `ir::opt::simplify_muxes`, `ir::opt::for_each_read_net_mut`, the
@@ -45,7 +45,8 @@ over the example corpus:
 `r3_skips_an_inner_mux_on_the_a_side`,
 `r3_skips_an_inner_mux_on_the_b_side`,
 `r3_keeps_an_inner_mux_that_has_another_reader`,
-`r3_leaves_nested_muxes_on_different_selects_alone` and
+`r3_leaves_nested_muxes_on_different_selects_alone`,
+`never_bypasses_a_mux_that_feeds_a_shift_amount` (final-review fix) and
 `optimizer_passes_preserve_every_example`.
 Previously, as of 2026-09-27 at 1509: +13 from the new `crates/mimz-core/src/ir/tests/opt_dead_cell_elim.rs`
 (`docs/superpowers/plans/2026-09-27-ir-dead-cell-elim.local.md`), covering
@@ -324,7 +325,7 @@ against a bare bundle-typed `fn` parameter inside that fn's own body
 
 | Where it lives                                      |    Count | Kind                                                   |
 | --------------------------------------------------- | -------: | ------------------------------------------------------ |
-| `crates/mimz-core/src/**` (lib unit)                |      952 | in-process, `#[cfg(test)] mod tests`                   |
+| `crates/mimz-core/src/**` (lib unit)                |      953 | in-process, `#[cfg(test)] mod tests`                   |
 | `crates/mimz-sim/src/**` (lib unit)                 |       90 | in-process                                             |
 | `src/**` (mimz shell crate, lib unit)               |       51 | in-process (`config`, `emulate`, `project`)            |
 | `src/lsp.rs` + `src/main.rs` (bin/lib `mod lsp`)    |        7 | in-process (`lsp`)                                     |

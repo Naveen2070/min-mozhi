@@ -67,6 +67,18 @@ fn simplify_once(module: &mut Module) -> bool {
         }
     }
 
+    // `validate` sizes a `Shl` exactly once its `b` pin is one Const cell's
+    // `out`, but `lower` sized it worst-case, so a bypass there would make a
+    // valid module fail `validate` (the same guard as `const_fold`'s
+    // `feeds_a_shift_amount`).
+    // ponytail: this also keeps the mux for its other readers; bypass them
+    // and leave only `Shl.b` if that ever matters.
+    for cell in module.cells.iter().filter(|c| c.kind == CellKind::Shl) {
+        for net in &cell.pins["b"].nets {
+            subst.remove(net);
+        }
+    }
+
     // Edits go first: an edited pin may point at a net R1/R2 also bypassed
     // this round, and the rewrite below then follows it.
     let mut changed = !edits.is_empty();

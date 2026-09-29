@@ -481,3 +481,22 @@ fn r3_leaves_nested_muxes_on_different_selects_alone() {
     assert!(!simplify_muxes(&mut module));
     assert_eq!(format!("{module:?}"), snapshot);
 }
+
+#[test]
+fn never_bypasses_a_mux_that_feeds_a_shift_amount() {
+    // `validate` sizes a `Shl` exactly only when `b` is one Const cell's
+    // `out`. `lower` sized this one worst-case, so pointing `b` at the Const
+    // behind the mux would make a valid module fail `validate`.
+    let mut module = lower_valid(
+        "module M {\n  in c: bit\n  in x: bits[4]\n  out o: bits[7]\n  wire amt: bits[2] = if c { 2 } else { 2 }\n  o = x << amt\n}\n",
+    );
+    let inputs: Inputs = &[("c", 1, 1), ("x", 0x5, 4)];
+    let before = run(&module, inputs, "o");
+
+    simplify_muxes(&mut module);
+    assert_valid(&module);
+    eliminate_dead_cells(&mut module);
+
+    assert_valid(&module);
+    assert_eq!(run(&module, inputs, "o"), before);
+}
