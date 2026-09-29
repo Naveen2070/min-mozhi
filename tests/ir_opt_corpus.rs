@@ -1,5 +1,6 @@
 //! Runs the three IR optimizer passes (`fold_constants`, `simplify_muxes`,
-//! `eliminate_dead_cells`) over every example that lowers `validate`-clean,
+//! `eliminate_dead_cells`) over every example and extern fixture that lowers
+//! `validate`-clean,
 //! and checks the result is still `validate`-clean, computes the same
 //! outputs, and is a fixpoint. See
 //! `docs/superpowers/specs/2026-09-27-ir-mux-simplify-design.local.md`.
@@ -15,7 +16,7 @@ use std::path::{Path, PathBuf};
 
 /// Floor on the examples actually checked, so the test cannot pass by
 /// skipping everything. Set to the count observed when this was added.
-const MIN_CHECKED: usize = 216;
+const MIN_CHECKED: usize = 222;
 
 fn mimz_files(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in std::fs::read_dir(dir).unwrap() {
@@ -77,10 +78,9 @@ fn trace(module: &Module) -> Vec<Val> {
 #[test]
 fn optimizer_passes_preserve_every_example() {
     let mut files = Vec::new();
-    mimz_files(
-        &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples"),
-        &mut files,
-    );
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    mimz_files(&root.join("examples"), &mut files);
+    mimz_files(&root.join("tests/fixtures/extern"), &mut files);
     files.sort();
     let mut checked = 0;
     for path in &files {

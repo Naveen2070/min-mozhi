@@ -421,7 +421,7 @@ fn flatten_extern_instance(
     }
 
     let mut flat = Flat::default();
-    let mut ports: Vec<(String, Signal)> = Vec::new();
+    let mut ports: Vec<(String, Signal, Dir)> = Vec::new();
     // Extern ports are scalar-only (bit/bits[N]/signed[N]) — the checker
     // enforces this on the declaration (Task 3), so `type_width` (the same
     // width-resolution helper the real child-elaboration path uses) never
@@ -467,7 +467,7 @@ fn flatten_extern_instance(
                     flat.unknown.push(flat_name);
                 }
             }
-            ports.push((name.name.clone(), sig));
+            ports.push((name.name.clone(), sig, *dir));
         }
     }
     flat.extern_instances.push(ExternInstance {

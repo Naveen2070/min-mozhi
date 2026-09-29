@@ -212,6 +212,24 @@ pub fn validate(module: &Module) -> Vec<ValidationError> {
                 }
             }
         }
+        // A declared extern output drives its pin's nets. Without a declared
+        // shape (hand-parsed IR, see `Module::extern_decls`) the direction is
+        // unknown, so nothing is added.
+        if let CellKind::BlackBox { module_name } = &cell.kind
+            && let Some(decl) = module.extern_decls.get(module_name)
+        {
+            for (port, _, dir) in decl {
+                if *dir != crate::ast::Dir::Out {
+                    continue;
+                }
+                if let Some(bits) = cell.pins.get(port.as_str()) {
+                    for net in &bits.nets {
+                        driver.entry(*net).or_default().push(i);
+                        driven.insert(*net);
+                    }
+                }
+            }
+        }
     }
     for (name, bits, dir) in &module.ports {
         let _ = name;
@@ -306,7 +324,7 @@ pub fn validate(module: &Module) -> Vec<ValidationError> {
         let Some(decl) = module.extern_decls.get(module_name) else {
             continue;
         };
-        for (port_name, expected_width) in decl {
+        for (port_name, expected_width, _) in decl {
             match cell.pins.get(port_name.as_str()) {
                 None => errors.push(ValidationError::BlackBoxPortMismatch {
                     cell_index: i,
@@ -326,7 +344,7 @@ pub fn validate(module: &Module) -> Vec<ValidationError> {
                 _ => {}
             }
         }
-        let declared_names: HashSet<&str> = decl.iter().map(|(n, _)| n.as_str()).collect();
+        let declared_names: HashSet<&str> = decl.iter().map(|(n, _, _)| n.as_str()).collect();
         for pin_name in cell.pins.keys() {
             if !declared_names.contains(pin_name) {
                 errors.push(ValidationError::BlackBoxPortMismatch {
