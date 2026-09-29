@@ -111,8 +111,8 @@ build`/`mimz test` path. Exit criterion #2's "lower to IR, pass IR
   `validate`-clean as of 2026-09-27 (`tests/ir_opt_corpus.rs`, see the
   Optimizer section below). Resolving imports through `load_project` (which
   that test does and this standalone probe did not) surfaced one more real
-  gap: `ripple_adder.mimz` panics in `ir::lower` (`docs/audit/gaps.md`
-  GAP-1).
+  gap, `ripple_adder.mimz` panicking in `ir::lower`, fixed 2026-09-29
+  (`docs/audit/gaps.md` GAP-1).
 
 ### Optimizer (first passes)
 
@@ -142,13 +142,15 @@ build`/`mimz test` path. Exit criterion #2's "lower to IR, pass IR
 > constant select, a mux bit whose two data bits agree, and an inner mux on
 > the same select, by rewiring readers; `eliminate_dead_cells` then removes
 > the bypassed muxes. `tests/ir_opt_corpus.rs` runs all three passes to a
-> fixpoint over every example that lowers `validate`-clean (216 of 224) and
-> checks the result stays `validate`-clean with identical outputs over 4
-> ticks; the passes cut the corpus's muxes from 1064 to 709. That meets exit
-> criterion #2's "survive optimizer passes" clause for those examples. The
-> other 8 are `alu.mimz` (two modules, no top named) and `ripple_adder.mimz`,
-> which panics in `ir::lower` (open GAP-1 sub-gap); extern-using designs are
-> also excluded until the open GAP-1 `validate` sub-gap is fixed.
+> fixpoint over every example and extern fixture that lowers
+> `validate`-clean (222 of 226 as of 2026-09-29) and checks the result stays
+> `validate`-clean with identical outputs over 4 ticks; the passes cut the
+> corpus's muxes from 1064 to 709 (measured 2026-09-27 over 216 examples).
+> That meets exit criterion #2's "survive optimizer passes" clause for those
+> designs. The remaining skips are the four `alu.mimz` flavors (two modules,
+> no top named); since 2026-09-29 `ripple_adder.mimz` lowers and extern
+> designs (`tests/fixtures/extern/`) are `validate`-clean and in the corpus
+> too.
 
 ### Synthesis path (pragmatic first)
 

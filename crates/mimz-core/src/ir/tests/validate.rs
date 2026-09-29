@@ -176,7 +176,10 @@ fn rejects_a_blackbox_port_shape_mismatch() {
     // mismatches `validate` must catch via `Module::extern_decls`.
     module.extern_decls.insert(
         "Pll".to_string(),
-        vec![("clk_in".to_string(), 1), ("locked".to_string(), 1)],
+        vec![
+            ("clk_in".to_string(), 1, crate::ast::Dir::In),
+            ("locked".to_string(), 1, crate::ast::Dir::Out),
+        ],
     );
     let errors = validate::validate(&module);
     assert!(
@@ -421,4 +424,72 @@ fn hand_parsed_fixture_with_no_declared_width_skips_the_port_width_check() {
     let module = parse_line::parse(text).expect("fixture should be syntactically valid IR text");
     assert!(module.port_declared_widths.is_empty());
     assert_eq!(validate::validate(&module), Vec::new());
+}
+
+/// One `Pll` black box whose `clk_out` pin is a fresh 1-bit net, plus
+/// whether `extern_decls` records `clk_out` as an output.
+fn extern_out_module(declared: bool) -> (crate::ir::Module, Bits) {
+    let mut module = crate::ir::Module {
+        name: "bb3".to_string(),
+        ports: Vec::new(),
+        cells: Vec::new(),
+        nets: Vec::new(),
+        extern_decls: Default::default(),
+        signals: Default::default(),
+        port_declared_widths: Default::default(),
+    };
+    let clk_out = module.alloc_bits(1, None);
+    module.cells.push(Cell {
+        kind: CellKind::BlackBox {
+            module_name: "Pll".to_string(),
+        },
+        pins: [("clk_out", clk_out.clone())].into_iter().collect(),
+        span: Span::default(),
+    });
+    if declared {
+        module.extern_decls.insert(
+            "Pll".to_string(),
+            vec![("clk_out".to_string(), 1, crate::ast::Dir::Out)],
+        );
+    }
+    (module, clk_out)
+}
+
+#[test]
+fn an_extern_output_also_driven_by_a_cell_is_a_multiple_driver() {
+    let (mut module, clk_out) = extern_out_module(true);
+    module.cells.push(Cell {
+        kind: CellKind::Const {
+            value: crate::checker::consteval::ConstVal {
+                bits: crate::bits::Bits::Small(0),
+                width: 1,
+                signed: false,
+            },
+        },
+        pins: [("out", clk_out)].into_iter().collect(),
+        span: Span::default(),
+    });
+
+    let errors = validate::validate(&module);
+
+    assert!(
+        errors
+            .iter()
+            .any(|e| matches!(e, validate::ValidationError::MultipleDrivers { .. })),
+        "got {errors:?}"
+    );
+}
+
+#[test]
+fn an_extern_output_with_no_declared_shape_stays_undriven() {
+    let (module, _) = extern_out_module(false);
+
+    let errors = validate::validate(&module);
+
+    assert!(
+        errors
+            .iter()
+            .any(|e| matches!(e, validate::ValidationError::UndrivenNet { .. })),
+        "got {errors:?}"
+    );
 }

@@ -160,8 +160,9 @@ pub struct Process {
 pub struct ExternInstance {
     /// The extern module's declared name (the Verilog module to instantiate).
     pub module_name: String,
-    /// `(declared port name, connected flat Signal)`, in declaration order.
-    pub ports: Vec<(String, Signal)>,
+    /// `(declared port name, connected flat Signal, declared direction)`,
+    /// in declaration order.
+    pub ports: Vec<(String, Signal, crate::ast::Dir)>,
     /// The `let u = Extern() { .. }` instantiation's own source span —
     /// spans-everywhere is a core invariant (architecture.md), and this is
     /// what `ir::lower`'s `BlackBox` cell traces back to.

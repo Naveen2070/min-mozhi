@@ -1,5 +1,8 @@
 use super::{ident, w};
+use crate::ast::Dir;
 use crate::elaborate::{Design, ExternInstance, Signal};
+use crate::ir::opt::{eliminate_dead_cells, fold_constants, simplify_muxes};
+use crate::ir::validate::validate;
 use crate::ir::{Cell, CellKind, lower};
 use crate::span::Span;
 use std::collections::BTreeMap;
@@ -52,6 +55,7 @@ pub(super) fn pll_design() -> Design {
                         name: "u_clk_in".into(),
                         width: w(1),
                     },
+                    Dir::In,
                 ),
                 (
                     "clk_out".to_string(),
@@ -59,6 +63,7 @@ pub(super) fn pll_design() -> Design {
                         name: "u_clk_out".into(),
                         width: w(1),
                     },
+                    Dir::Out,
                 ),
             ],
             span: INST_SPAN,
@@ -105,4 +110,31 @@ fn lowers_extern_instance_to_one_blackbox_cell_with_matching_pins() {
     // `clk_out` is driverless (an extern output, in `unknown_signals`) —
     // still a real, distinct net, freshly allocated for this pin.
     assert_ne!(bb.pins["clk_out"], bb.pins["clk_in"]);
+}
+
+#[test]
+fn a_lowered_extern_instance_validates_clean() {
+    let module = lower(&pll_design());
+
+    assert_eq!(validate(&module), Vec::new());
+}
+
+#[test]
+fn a_lowered_extern_instance_survives_the_optimizer() {
+    let mut module = lower(&pll_design());
+
+    // `|`, not `||`: every pass runs every round.
+    while fold_constants(&mut module)
+        | simplify_muxes(&mut module)
+        | eliminate_dead_cells(&mut module)
+    {}
+
+    assert_eq!(validate(&module), Vec::new());
+    assert!(
+        module
+            .cells
+            .iter()
+            .any(|c| matches!(c.kind, CellKind::BlackBox { .. })),
+        "black boxes are never removed"
+    );
 }
