@@ -493,3 +493,56 @@ fn an_extern_output_with_no_declared_shape_stays_undriven() {
         "got {errors:?}"
     );
 }
+
+/// One `Reg` black box with a single 1-bit pin called `pin`, declared with
+/// direction `dir`.
+fn named_pin_module(pin: &'static str, dir: crate::ast::Dir) -> (crate::ir::Module, Bits) {
+    let mut module = crate::ir::Module {
+        name: "bb4".to_string(),
+        ports: Vec::new(),
+        cells: Vec::new(),
+        nets: Vec::new(),
+        extern_decls: Default::default(),
+        signals: Default::default(),
+        port_declared_widths: Default::default(),
+    };
+    let net = module.alloc_bits(1, None);
+    module.cells.push(Cell {
+        kind: CellKind::BlackBox {
+            module_name: "Reg".to_string(),
+        },
+        pins: [(pin, net.clone())].into_iter().collect(),
+        span: Span::default(),
+    });
+    module
+        .extern_decls
+        .insert("Reg".to_string(), vec![(pin.to_string(), 1, dir)]);
+    (module, net)
+}
+
+#[test]
+fn a_declared_extern_output_named_q_is_driven_once() {
+    // Register-like externs (`out q`) used to be counted twice: once by the
+    // `out`/`q`/`rdata` name rule and once by the declared direction.
+    let (module, _) = named_pin_module("q", crate::ast::Dir::Out);
+
+    assert_eq!(validate::validate(&module), Vec::new());
+}
+
+#[test]
+fn a_declared_extern_input_named_out_is_not_a_driver() {
+    let (mut module, net) = named_pin_module("out", crate::ast::Dir::In);
+    module.cells.push(Cell {
+        kind: CellKind::Const {
+            value: crate::checker::consteval::ConstVal {
+                bits: crate::bits::Bits::Small(1),
+                width: 1,
+                signed: false,
+            },
+        },
+        pins: [("out", net)].into_iter().collect(),
+        span: Span::default(),
+    });
+
+    assert_eq!(validate::validate(&module), Vec::new());
+}

@@ -192,8 +192,13 @@ pub fn validate(module: &Module) -> Vec<ValidationError> {
 
     // --- Check 1: multiple-drivers / undriven-net --------------------
     for (i, cell) in module.cells.iter().enumerate() {
+        // A declared black box's pins are the extern's own port names, so
+        // its declared directions (below) decide what it drives, not the
+        // `out`/`q`/`rdata` names.
+        let declared_blackbox = matches!(&cell.kind, CellKind::BlackBox { module_name }
+            if module.extern_decls.contains_key(module_name));
         for (pin_name, bits) in &cell.pins {
-            let is_output = matches!(*pin_name, "out" | "q" | "rdata");
+            let is_output = !declared_blackbox && matches!(*pin_name, "out" | "q" | "rdata");
             if is_output {
                 for net in &bits.nets {
                     driver.entry(*net).or_default().push(i);

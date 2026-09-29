@@ -22,9 +22,14 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1535 tests** as of 2026-09-29 (`cargo test --workspace`; the count is
+**1539 tests** as of 2026-09-29 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
-+8 from the IR lowering and validate fixes
++4 from the final-review fixes on the IR lowering and validate plan:
+`lower_if.rs` (+2: `a_callers_let_constant_never_decides_a_callees_condition`,
+`a_callers_let_constant_never_folds_a_callees_let`) and `validate.rs` (+2:
+`a_declared_extern_output_named_q_is_driven_once`,
+`a_declared_extern_input_named_out_is_not_a_driver`). Previously, as of
+2026-09-29 at 1535: +8 from the IR lowering and validate fixes
 (`docs/superpowers/plans/2026-09-29-ir-lowering-validate-fixes.local.md`):
 the new `crates/mimz-core/src/ir/tests/lower_if.rs` (4:
 `an_all_constant_if_is_sized_to_its_declared_port`,
@@ -336,7 +341,7 @@ against a bare bundle-typed `fn` parameter inside that fn's own body
 
 | Where it lives                                      |    Count | Kind                                                   |
 | --------------------------------------------------- | -------: | ------------------------------------------------------ |
-| `crates/mimz-core/src/**` (lib unit)                |      961 | in-process, `#[cfg(test)] mod tests`                   |
+| `crates/mimz-core/src/**` (lib unit)                |      965 | in-process, `#[cfg(test)] mod tests`                   |
 | `crates/mimz-sim/src/**` (lib unit)                 |       90 | in-process                                             |
 | `src/**` (mimz shell crate, lib unit)               |       51 | in-process (`config`, `emulate`, `project`)            |
 | `src/lsp.rs` + `src/main.rs` (bin/lib `mod lsp`)    |        7 | in-process (`lsp`)                                     |
