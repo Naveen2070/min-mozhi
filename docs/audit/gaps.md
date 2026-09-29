@@ -55,7 +55,8 @@ Source: [`review-2026-08-02.md`](review-2026-08-02.md).
 the arithmetic family's `signed` flag not round-tripping through IR text
 (below, filed 2026-09-21, latent/unreachable today). The 2026-09-27
 optimizer work filed more sub-gaps below; the known limits and non-goals of
-the optimizer passes stay OPEN, while extern instances failing `validate`,
+the optimizer passes stay OPEN (as do the limits left by the 2026-09-29
+lowering fixes), while extern instances failing `validate`,
 `ripple_adder.mimz` panicking in `ir::lower` and an all-constant `if` not
 sized to its declared target were RESOLVED 2026-09-29. The gap's own
 headline claim — three consumers (checker/emitter/simulator) each
@@ -1587,6 +1588,13 @@ is unchanged. Tests: `a_lowered_extern_instance_validates_clean`,
 `an_extern_output_with_no_declared_shape_stays_undriven`, and
 `tests/ir_opt_corpus.rs`, which now also runs `tests/fixtures/extern/`
 (`pll.mimz`, `pll_alias.mimz`) through all three passes.
+Final-review fix (same day): for a black box with a declared shape, the
+declared directions now replace Check 1's `out`/`q`/`rdata` name rule, so
+a register-like extern's `out q` is no longer counted twice
+(`MultipleDrivers` with the same cell index) and an extern input named
+`out` is no longer taken for a driver. Tests:
+`a_declared_extern_output_named_q_is_driven_once`,
+`a_declared_extern_input_named_out_is_not_a_driver`.
 
 ### Sub-gap (2026-09-27, OPEN — dead-cell-elim final review): known limits of `ir::opt::eliminate_dead_cells`
 
@@ -1683,12 +1691,27 @@ and, when it folds, lowers only the taken branch, mirroring
 lower and pass the corpus test. Test:
 `a_constant_condition_never_lowers_its_dead_branch`.
 
+Final-review fix (same day): the fold made a pre-existing scoping leak
+reachable from any `if`. `LowerCtx::local_consts` (the `fn`-body `let`
+constants) was one map across nested inlined calls, so a caller's
+`let k = 0` decided a callee's parameter `k`, silently selecting the wrong
+branch. The `FnCall` inline path now gives the callee an empty
+`local_consts` and restores the caller's afterwards. This also closes the
+older leak through `FnStmt::Let`'s fold. Tests:
+`a_callers_let_constant_never_decides_a_callees_condition`,
+`a_callers_let_constant_never_folds_a_callees_let`.
+
 **Known limit.** When the taken branch is a constant, the dead branch is
 not, and there is no declared target width, the constant still needs its
 sibling's width, so both branches are lowered as before and the resulting
 mux has a constant select (which `simplify_muxes` R1 removes). In that one
 shape a phantom dead branch (`if i == 0 { 0 } else { fa[i - 1].cout }`)
-would still panic. No example has it.
+would still panic. No example has it, but it is reachable from source (final
+review, 2026-09-29) wherever the `if` is lowered with no target width and no
+constant-adapting sibling: a concat part (`{if i == 0 { 0 } else
+{ fa[i - 1].cout }, ...}` inside a `repeat`), a unary operand, a shift
+amount, or an index base. Tracked as OPEN in the sub-gap "limits left by the
+2026-09-29 lowering fixes" below.
 
 ### Sub-gap (2026-09-27, RESOLVED 2026-09-29 — found by mux-simplify Task 2): an all-constant `if` expression is not sized to its declared target
 
@@ -1715,6 +1738,34 @@ constant branches with `lower_expr_sized` at the target width when one is
 given. Tests: `an_all_constant_if_is_sized_to_its_declared_port`,
 `an_all_constant_if_with_different_branches_keeps_both_values`; the
 `opt_mux_simplify.rs` test that found it is back on `bits[8]`.
+
+### Sub-gap (2026-09-29, OPEN — lowering-fixes final review): limits left by the 2026-09-29 lowering fixes
+
+Deferred Minor findings from the final review of
+`docs/superpowers/plans/2026-09-29-ir-lowering-validate-fixes.local.md`
+(record in `docs/log/2026-09-29.md`). None is hit by any example today.
+
+- **The constant-condition fold's known limit is reachable from source.**
+  `LowerCtx::lower_if` keeps the two-branch mux when the taken branch is a
+  constant, the dead branch is not, and there is no target width, so a
+  phantom dead branch there still panics in `resolve`. Contexts that reach
+  it: a concat part, a unary operand, a shift amount, an index base (see the
+  `ripple_adder.mimz` sub-gap above). Fix shape: size the constant taken
+  branch without lowering the dead one, for example from the checker's type
+  of the whole `if`, or lower the dead branch only when it resolves.
+- **`tests/ir_opt_corpus.rs` pins a total, not which files pass.**
+  `MIN_CHECKED = 222` counts checked files across `examples/` and
+  `tests/fixtures/extern/`. If one file regressed into a skip while another
+  started passing, the total would not move and the test would still pass.
+  Fix shape: assert that every file under `tests/fixtures/extern/` is
+  checked, or pin the exact skipped set (today the four `alu.mimz` flavors).
+- **`if` results reached through `lower_expr_sized` bypass `expr_memo`.**
+  The new `ExprKind::IfExpr` arm in `lower_expr_sized` calls `lower_if`
+  directly, as its `Match` arm already calls `lower_match`, so neither
+  result is cached per expression site the way `lower_expr` caches. Every
+  call site the reviewer traced lowers each `if` once per walk, so this
+  duplicates no cells today. Fix shape: memoize in `lower_expr_sized` too,
+  keyed by site and target width, or note the rule in `expr_memo`'s doc.
 
 ---
 

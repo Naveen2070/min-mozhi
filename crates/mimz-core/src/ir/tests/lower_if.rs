@@ -139,3 +139,25 @@ fn a_constant_condition_over_two_signals_reads_the_taken_one() {
     };
     assert_eq!(port("o").nets, port("a").nets);
 }
+
+const NESTED_FNS: &str = "fn inner(a: bits[8], b: bits[8], k: bit) -> bits[8] {\n  let r = if k { a } else { b }\n  r\n}\nfn outer(a: bits[8], b: bits[8], s: bit) -> bits[8] {\n  let k = 0\n  inner(a, b, s)\n}\nmodule M {\n  in a: bits[8]\n  in b: bits[8]\n  in s: bit\n  out o: bits[8]\n  o = outer(a, b, s)\n}\n";
+
+#[test]
+fn a_callers_let_constant_never_decides_a_callees_condition() {
+    // `outer`'s `let k = 0` must not leak into `inner`, whose `k` is a
+    // parameter bound to the real signal `s`.
+    let module = lower_valid(NESTED_FNS);
+    let inputs = |s| [("a", 0x5A, 8), ("b", 0x3C, 8), ("s", s, 1)];
+    assert_eq!(run(&module, &inputs(1), "o").bits, CBits::Small(0x5A));
+    assert_eq!(run(&module, &inputs(0), "o").bits, CBits::Small(0x3C));
+}
+
+#[test]
+fn a_callers_let_constant_never_folds_a_callees_let() {
+    // Same leak through `FnStmt::Let`'s fold: `let r = if k { a } else { 0 }`
+    // was recorded as the constant 0.
+    let module = lower_valid(&NESTED_FNS.replace("else { b }", "else { 0 }"));
+    let inputs = |s| [("a", 0x5A, 8), ("b", 0x3C, 8), ("s", s, 1)];
+    assert_eq!(run(&module, &inputs(1), "o").bits, CBits::Small(0x5A));
+    assert_eq!(run(&module, &inputs(0), "o").bits, CBits::Small(0));
+}
