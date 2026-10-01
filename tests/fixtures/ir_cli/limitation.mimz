@@ -1,6 +1,7 @@
-// `mimz ir` CLI fixture: a bundle-returning `fn` read through a field hits
-// an IR limitation (`unimplemented!` in ir::lower). Checks clean; compiles
-// to Verilog.
+// `mimz ir` CLI fixture: a bundle-typed wire driven by a bundle-returning
+// `fn` hits an IR limitation (`unimplemented!` in ir::lower): elaborate drives
+// each field wire from `make(v).<field>`, which lowering cannot slice yet, so
+// the report underlines `make(v)`. Checks clean; compiles to Verilog.
 bundle Handshake(W: int = 8) {
   valid: bit
   data:  bits[W]

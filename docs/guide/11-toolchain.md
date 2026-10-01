@@ -121,7 +121,7 @@ simplification, dead-cell elimination) and prints the result.
 mimz ir examples/english/adder.mimz            # optimized IR, line form
 mimz ir design.mimz --no-opt                   # as lowered, no optimizer
 mimz ir design.mimz --sexpr -o design.ir       # s-expression form, to a file
-mimz ir alu.mimz --module Top --param WIDTH=4  # pick the top, override params
+mimz ir alu.mimz --module Alu --param WIDTH=4  # pick a module, override params
 ```
 
 The IR is not available for every design yet. If lowering fails, `mimz ir`
