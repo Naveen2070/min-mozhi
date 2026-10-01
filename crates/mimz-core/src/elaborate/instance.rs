@@ -383,12 +383,14 @@ fn flatten_extern_instance(
             .with_code("S0113"),
         ));
     }
-    eprintln!(
-        "warning: instance `{}` instantiates extern module `{}` — its output(s) \
-         are unconstrained (X) in simulation; only Verilog emission models its real \
-         behavior",
-        inst.name.name, em.name.name
-    );
+    if mode == SimMode::Warn {
+        eprintln!(
+            "warning: instance `{}` instantiates extern module `{}` — its output(s) \
+             are unconstrained (X) in simulation; only Verilog emission models its real \
+             behavior",
+            inst.name.name, em.name.name
+        );
+    }
 
     // Child parameter bindings — same precedence as a real module's instance
     // (an explicit `arg` wins, else the extern's own default), needed to

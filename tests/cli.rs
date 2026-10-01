@@ -351,4 +351,20 @@ fn ir_panic_flag_keeps_a_limitation_clean() {
     let path = repo("tests/fixtures/ir_cli/limitation.mimz");
     let out = ir(&[path.to_str().unwrap(), "--panic"]);
     assert_eq!(out.status.code(), Some(1));
+    assert!(
+        !stderr(&out).contains("backtrace:"),
+        "a limitation stays a clean error: {}",
+        stderr(&out)
+    );
+}
+
+#[test]
+fn ir_extern_design_prints_no_simulation_warning() {
+    let out = ir(&[repo("tests/fixtures/extern/pll.mimz").to_str().unwrap()]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(
+        !stderr(&out).contains("in simulation"),
+        "mimz ir does not simulate: {}",
+        stderr(&out)
+    );
 }
