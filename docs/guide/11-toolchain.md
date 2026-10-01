@@ -111,6 +111,31 @@ For a full check → test → sim → view-waveform walkthrough on a real design
 accumulator CPU exercising instances, imports, `repeat`, enum state, and
 `match`-as-ROM), see [`../../demo/`](../../demo/).
 
+## `mimz ir` - inspect the IR
+
+`mimz ir` lowers a module to Min-Mozhi's own IR (the netlist the synthesis
+path will start from), runs the optimizer (constant folding, mux
+simplification, dead-cell elimination) and prints the result.
+
+```text
+mimz ir examples/english/adder.mimz            # optimized IR, line form
+mimz ir design.mimz --no-opt                   # as lowered, no optimizer
+mimz ir design.mimz --sexpr -o design.ir       # s-expression form, to a file
+mimz ir alu.mimz --module Top --param WIDTH=4  # pick the top, override params
+```
+
+The IR is not available for every design yet. If lowering fails, `mimz ir`
+says which kind of failure it is:
+
+- **IR limitation**: the design uses something the IR cannot lower yet.
+  `mimz compile` still produces Verilog for it.
+- **Internal compiler error**: a compiler bug. Rerun with `-d` for a
+  backtrace and please report it; `--panic` turns this into a real crash
+  for a debugger.
+
+The printed IR is for reading. It is not guaranteed to parse back
+unchanged.
+
 ## `mimz test` - run `test` blocks
 
 Run a file's `test "…" for M(…) { … }` blocks (`tick`/`expect`), reporting

@@ -1,7 +1,9 @@
-//! IR optimizer passes over a lowered `ir::Module`. See
+//! IR optimizer passes over a lowered `ir::Module`, and [`optimize`], which
+//! runs them together. See
 //! `docs/superpowers/specs/2026-09-24-ir-const-fold-design.local.md`,
-//! `docs/superpowers/specs/2026-09-27-ir-dead-cell-elim-design.local.md` and
-//! `docs/superpowers/specs/2026-09-27-ir-mux-simplify-design.local.md`.
+//! `docs/superpowers/specs/2026-09-27-ir-dead-cell-elim-design.local.md`,
+//! `docs/superpowers/specs/2026-09-27-ir-mux-simplify-design.local.md` and
+//! `docs/superpowers/specs/2026-10-01-ir-pipeline-cli-design.local.md`.
 
 mod const_fold;
 mod dead_cell_elim;
@@ -10,6 +12,28 @@ mod mux_simplify;
 pub use const_fold::fold_constants;
 pub use dead_cell_elim::eliminate_dead_cells;
 pub use mux_simplify::simplify_muxes;
+
+/// Rounds after which [`optimize`] gives up. The passes only shrink or
+/// rewire the module, so needing this many means two passes keep undoing
+/// each other.
+pub const MAX_ROUNDS: usize = 32;
+
+/// Runs `fold_constants`, `simplify_muxes` and `eliminate_dead_cells`, every
+/// pass every round, until none changes anything. Returns the number of
+/// rounds that changed something. Precondition: `module` is
+/// `validate`-clean. Panics past [`MAX_ROUNDS`] (an optimizer bug).
+pub fn optimize(module: &mut Module) -> usize {
+    let mut rounds = 0;
+    // `|`, not `||`: every pass runs every round.
+    while fold_constants(module) | simplify_muxes(module) | eliminate_dead_cells(module) {
+        rounds += 1;
+        assert!(
+            rounds <= MAX_ROUNDS,
+            "optimizer did not converge in {MAX_ROUNDS} rounds"
+        );
+    }
+    rounds
+}
 
 use super::{CellKind, Module, NetId};
 use std::collections::HashMap;

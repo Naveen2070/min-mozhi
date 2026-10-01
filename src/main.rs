@@ -23,7 +23,7 @@ use mimz::{diag, project};
 
 use commands::{
     EjectFlavor, check, compile, completions, doctor, eject_std, eval_file, explain_code, fmt_file,
-    init, lint_file, repl, resolve_config, sim_file, test_file, translate_file,
+    init, ir_file, lint_file, repl, resolve_config, sim_file, test_file, translate_file,
 };
 
 /// Compiler for Min-Mozhi (மின்மொழி), a Tamil-rooted HDL.
@@ -332,6 +332,39 @@ enum Cmd {
         /// Simulator behavior for extern module instances: warn | strict
         #[arg(long)]
         extern_sim: Option<String>,
+        /// Error-message language: english | tanglish | tamil (default: the
+        /// flavor the file predominantly uses)
+        #[arg(short = 'l', long)]
+        lang: Option<CliLang>,
+    },
+    /// Lower a module to the Min-Mozhi IR and print it.
+    ///
+    /// Runs check -> elaborate -> IR lowering -> validate -> the optimizer
+    /// (constant folding, mux simplification, dead-cell elimination) and
+    /// prints the IR text. A lowering failure is reported with its root
+    /// cause: an IR limitation, or an internal compiler error.
+    Ir {
+        /// The .mimz file
+        file: PathBuf,
+        /// Write the IR here instead of stdout
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Which module to lower (default: the file's only module)
+        #[arg(long)]
+        module: Option<String>,
+        /// Parameter overrides, comma-separated: `--param WIDTH=4`
+        #[arg(long, default_value = "")]
+        param: String,
+        /// Print the IR as lowered, without running the optimizer
+        #[arg(long)]
+        no_opt: bool,
+        /// Print the s-expression form instead of the line form
+        #[arg(long)]
+        sexpr: bool,
+        /// Crash with the original panic on an internal compiler error (an IR
+        /// limitation still exits 1 cleanly)
+        #[arg(long)]
+        panic: bool,
         /// Error-message language: english | tanglish | tamil (default: the
         /// flavor the file predominantly uses)
         #[arg(short = 'l', long)]
@@ -660,6 +693,35 @@ fn main() -> ExitCode {
                 verbose,
                 signals,
                 &extern_sim,
+                lang_str.as_deref(),
+                config_path.as_deref(),
+                quiet,
+                debug,
+            )
+        }
+        Cmd::Ir {
+            file,
+            output,
+            module,
+            param,
+            no_opt,
+            sexpr,
+            panic,
+            lang,
+        } => {
+            let cfg = match resolve_config(&file, config_path.as_deref()) {
+                Ok(c) => c,
+                Err(code) => return code,
+            };
+            let lang_str = lang.map(|l| l.to_str().to_string()).or(cfg.lang);
+            ir_file(
+                &file,
+                output,
+                module,
+                &param,
+                no_opt,
+                sexpr,
+                panic,
                 lang_str.as_deref(),
                 config_path.as_deref(),
                 quiet,

@@ -475,6 +475,22 @@ for the session).
   non-fatal code quality warnings (`W0002` non-snake_case identifiers, `W0003` unused declarations,
   `W0004` unused bundle fields, `W0001` flavor mixing). Runs during `mimz lint` and `mimz check`.
 
+## `ir` (`src/commands/ir.rs`) - `mimz ir`
+
+- check -> `elaborate_project` -> `ir::lower` -> `validate` ->
+  `ir::opt::optimize` -> `validate` -> `print_line`/`print_sexpr`.
+- `lower` and `optimize` run inside `ir::failure::catch`
+  (`crates/mimz-core/src/ir/failure.rs`): a panic becomes a `Failure`
+  (stage, `Limitation`/`Internal`, message, panic site, innermost span,
+  backtrace with `-d`). One chaining panic hook per process; a thread-local
+  span stack fed by guards in `lower_expr`/`lower_expr_sized`.
+- `Limitation` = `unimplemented!` or the `S0227` loop budget; everything
+  else, and every optimizer panic, is `Internal`. `--panic` re-raises an
+  `Internal` failure (exit 101).
+- The span is underlined only for a single-file project: `Span` has no file
+  index (gaps.md).
+- A `validate` failure after either stage is an internal error.
+
 ## Operational commands (bin-only: `init` / `doctor` / `completions` / `check --watch` / `repl` / `eject`)
 
 These are **not** lib modules - they live in `src/commands/` (bin-only) and touch

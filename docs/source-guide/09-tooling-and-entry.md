@@ -1,6 +1,6 @@
 # 9 - Tooling, Entry Points & Editor Support
 
-## `src/commands/` - CLI Command Handlers (16 Files)
+## `src/commands/` - CLI Command Handlers (17 Files)
 
 These are thin functions that wire CLI arguments to the library modules. Nothing clever here - just plumbing. `mod.rs` declares the set and re-exports each handler; `main.rs` parses the CLI and dispatches into one function here.
 
@@ -10,6 +10,7 @@ These are thin functions that wire CLI arguments to the library modules. Nothing
 - **`compile.rs`** - full pipeline to a `.v` file; `--emit-testbench` also writes a `_tb.v` from inline `test` blocks
 - **`eval.rs`** - evaluate combinational modules (`--in`, `--module`, `--param`)
 - **`sim.rs`** - simulate with sweep, steps, traces, VCD
+- **`ir.rs`** - `mimz ir`: lower to the IR, run `ir::opt::optimize`, print it; a lowering/optimizer panic is caught by `ir::failure::catch` (`crates/mimz-core/src/ir/failure.rs`) and reported as an IR limitation or an internal compiler error
 - **`test.rs`** - run `tick`/`expect` test blocks
 - **`translate.rs`** - reskin keywords between flavors (`--to`, `--order`, romanization)
 - **`fmt.rs`** - in-place keyword normalization
