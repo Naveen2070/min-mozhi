@@ -58,12 +58,13 @@ use crate::REPEAT_BUDGET;
 /// levels deep, so 16 is generous for valid designs while staying crash-safe.
 const MAX_INSTANCE_DEPTH: u32 = 16;
 
-/// How the simulator handles an `extern module` instance — a declaration
+/// How elaboration handles an `extern module` instance — a declaration
 /// with no body, so nothing here can actually be simulated (Verilog
-/// emission is the only backend that models its real behavior). Threaded as
-/// a plain function parameter for now; Task 9 wires this to `mimz.toml`/CLI.
-/// Every entry point in this crate that doesn't take `mode` explicitly
-/// defaults to `Warn` (see [`elaborate`]/[`elaborate_project`]).
+/// emission is the only backend that models its real behavior). `Warn` and
+/// `Strict` are the simulator's modes, selected from `mimz.toml`/CLI;
+/// `Lower` is not a simulation at all (`mimz ir`) and is never selectable
+/// there. Every entry point in this crate that doesn't take `mode`
+/// explicitly defaults to `Warn` (see [`elaborate`]/[`elaborate_project`]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SimMode {
     /// An extern instance's output ports read as `Val::unknown` — the design
@@ -205,7 +206,7 @@ pub struct Design {
     /// available to the kernel's expression evaluator at runtime (`FnCall`).
     pub funcs: HashMap<String, FuncDecl>,
     /// Names of signals with no driver by design: an extern-module
-    /// instance's output ports in `warn` [`SimMode`]. Each is also present
+    /// instance's output ports in `warn`/`lower` [`SimMode`]. Each is also present
     /// in `wires` (for its width) but deliberately absent from `comb` (there
     /// is no body to derive a driver from) — the kernel resolves a name in
     /// this set straight to `Val::unknown`, bypassing `comb` entirely.

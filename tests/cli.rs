@@ -380,6 +380,10 @@ fn ir_stats_prints_both_columns_to_stderr() {
     );
     let err = stderr(&out);
     let header = err.lines().next().unwrap();
+    assert_eq!(
+        header, "cells        lowered  optimized",
+        "the spec's layout"
+    );
     assert!(
         header.starts_with("cells") && header.contains("lowered") && header.contains("optimized"),
         "{err}"

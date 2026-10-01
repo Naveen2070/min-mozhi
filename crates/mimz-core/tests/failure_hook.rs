@@ -20,6 +20,9 @@ fn a_panic_outside_catch_reaches_the_previous_hook() {
         panic!("mine")
     });
 
+    // The count is final; put the default hook back so a failing assert
+    // below prints its message instead of only being counted.
+    drop(std::panic::take_hook());
     assert_eq!(caught.unwrap_err().message, "mine");
     assert_eq!(
         PREVIOUS_HOOK_CALLS.load(Ordering::SeqCst),
