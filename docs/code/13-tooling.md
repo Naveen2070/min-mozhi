@@ -491,6 +491,8 @@ for the session).
 - The span is underlined only for a single-file project: `Span` has no file
   index (gaps.md).
 - A `validate` failure after either stage is an internal error.
+- `--stats`: per-kind cell counts keyed by the `CellKind` Debug name, lowered
+  vs optimized, plus nets and rounds, on stderr so stdout stays IR.
 - `SimMode::Lower` builds the same `Design` as `Warn` but skips the
   simulation-only `extern module` warning: `mimz ir` does not simulate, an
   extern instance becomes a `BlackBox` cell.
