@@ -58,7 +58,9 @@ optimizer work filed more sub-gaps below; the known limits and non-goals of
 the optimizer passes stay OPEN (as do the limits left by the 2026-09-29
 lowering fixes), while extern instances failing `validate`,
 `ripple_adder.mimz` panicking in `ir::lower` and an all-constant `if` not
-sized to its declared target were RESOLVED 2026-09-29. The gap's own
+sized to its declared target were RESOLVED 2026-09-29. The limits of the
+2026-10-01 `mimz ir` command (no multi-file spans, text-based failure
+classification) are OPEN below. The gap's own
 headline claim — three consumers (checker/emitter/simulator) each
 carrying their own type model — stays OPEN regardless: the IR is a fourth
 consumer today, not yet a replacement for the other three's independent
@@ -1766,6 +1768,32 @@ Deferred Minor findings from the final review of
   call site the reviewer traced lowers each `if` once per walk, so this
   duplicates no cells today. Fix shape: memoize in `lower_expr_sized` too,
   keyed by site and target width, or note the rule in `expr_memo`'s doc.
+
+### Sub-gap (2026-10-01, OPEN — `mimz ir` design): limits of `mimz ir`'s failure reports and output
+
+Accepted limits of the `mimz ir` command and `ir::failure`
+(`docs/superpowers/specs/2026-10-01-ir-pipeline-cli-design.local.md`,
+record in `docs/log/2026-10-01.md`).
+
+- **No source location in multi-file projects.** `Span` is a byte range
+  with no file index. A flattened instance of an imported module, or an
+  inlined `std` `fn`, keeps spans into its own file, so `mimz ir` only
+  underlines a span when the project is one file and otherwise prints
+  `source location not shown`. Fix shape: `elaborate` records a file index
+  where it flattens an instance and inlines a `fn` (option ii in the spec).
+  No test covers the multi-file branch.
+- **Classification is by panic text.** `Limitation` = message starts with
+  `not implemented` or contains `(S0227)`. A new `unimplemented!` is picked
+  up; a limitation written as `panic!` is reported as `Internal`. Fix
+  shape: `lower` returns a typed error.
+- **`ValidationError` has no `Display`.** `mimz ir` prints `{:?}` for a
+  `validate` failure.
+- **Printed IR does not round-trip.** Optimized output may not survive
+  `print_line` -> `parse_line`: the arithmetic `signed` flag (sub-gap
+  2026-09-21 above) and output ports aliasing input/`Const` nets.
+- **The `Internal` CLI fixture depends on an open bug.**
+  `tests/fixtures/ir_cli/internal.mimz` reproduces the constant-`if` fold
+  limit above; once that is fixed the fixture needs another reproducer.
 
 ---
 

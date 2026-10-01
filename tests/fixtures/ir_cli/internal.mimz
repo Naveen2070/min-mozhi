@@ -1,0 +1,18 @@
+// `mimz ir` CLI fixture: the constant-`if` fold's known limit (gaps.md,
+// "limits left by the 2026-09-29 lowering fixes") makes ir::lower read the
+// phantom `s[-1]` under `!` and panic on a broken invariant. Replace this
+// fixture with another Internal reproducer once that limit is fixed.
+module Pass {
+  in  x: bit
+  out y: bit
+  y = x
+}
+
+module Top {
+  in  a: bits[4]
+  out o: bits[4]
+  repeat i: 0..4 {
+    let s[i] = Pass() { x: a[i] }
+    o[i] = !(if i == 0 { 0 } else { s[i - 1].y })
+  }
+}

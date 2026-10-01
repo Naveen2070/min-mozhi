@@ -2,6 +2,7 @@
 //! `elaborate::Design`. See `docs/plan/phase-2-ir-design.local.md`.
 
 pub mod exec;
+pub mod failure;
 pub mod lower;
 pub mod opt;
 pub mod parse_line;

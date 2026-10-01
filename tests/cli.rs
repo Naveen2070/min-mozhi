@@ -1,6 +1,7 @@
-//! CLI-surface tests for the two new commands that carry real logic of their
-//! own: `doctor` (status aggregation + exit code + in-memory pipeline smoke
-//! test) and `check --watch` (initial run + watch-mode entry). The other
+//! CLI-surface tests for the commands that carry real logic of their own:
+//! `doctor` (status aggregation + exit code + in-memory pipeline smoke test),
+//! `check --watch` (initial run + watch-mode entry) and `ir` (IR pipeline,
+//! flags, classified failure reports). The other
 //! subcommands are either covered by their own files (`check`, `compile`,
 //! `fmt`, `translate`, `eval`, `sim`, `test`, `lsp`) or are thin passthroughs
 //! with nothing of ours to break (`explain` → lib catalog, already tested;
@@ -177,4 +178,177 @@ fn watch_starts_and_enters_watch_mode() {
         err.contains("watching"),
         "should announce watch mode; stderr={err}"
     );
+}
+
+// ---- ir -----------------------------------------------------------------
+
+fn repo(rel: &str) -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(rel)
+}
+
+/// The library pipeline `mimz ir` must match: load, check, elaborate,
+/// lower, optimize, print.
+fn library_ir(rel: &str) -> String {
+    let Ok(files) = mimz::project::load_project(&repo(rel)) else {
+        panic!("loads {rel}")
+    };
+    let asts: Vec<mimz::ast::File> = files.iter().map(|f| f.ast.clone()).collect();
+    mimz::checker::check(&asts).expect("checks");
+    let design = mimz::sim::elaborate::elaborate_project(&asts, None, &Default::default())
+        .expect("elaborates");
+    let mut m = mimz::ir::lower(&design);
+    mimz::ir::opt::optimize(&mut m);
+    mimz::ir::print_line::print(&m)
+}
+
+fn ir(args: &[&str]) -> std::process::Output {
+    mimz().arg("ir").args(args).output().unwrap()
+}
+
+#[test]
+fn ir_prints_the_optimized_line_form() {
+    let out = ir(&[repo("examples/english/adder.mimz").to_str().unwrap()]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        library_ir("examples/english/adder.mimz")
+    );
+}
+
+#[test]
+fn ir_no_opt_keeps_what_the_optimizer_removes() {
+    let path = repo("tests/fixtures/ir_cli/foldable.mimz");
+    let path = path.to_str().unwrap();
+    let opt = String::from_utf8_lossy(&ir(&[path]).stdout).into_owned();
+    let raw = String::from_utf8_lossy(&ir(&[path, "--no-opt"]).stdout).into_owned();
+    assert!(raw.contains("$mux"), "{raw}");
+    assert!(!opt.contains("$mux"), "{opt}");
+}
+
+#[test]
+fn ir_sexpr_prints_the_s_expression_form() {
+    let out = ir(&[
+        repo("examples/english/adder.mimz").to_str().unwrap(),
+        "--sexpr",
+    ]);
+    assert!(out.status.success());
+    assert!(
+        String::from_utf8_lossy(&out.stdout)
+            .trim_start()
+            .starts_with('(')
+    );
+}
+
+#[test]
+fn ir_module_picks_the_top_of_a_two_module_file() {
+    let path = repo("examples/english/alu.mimz");
+    let without = ir(&[path.to_str().unwrap()]);
+    assert!(!without.status.success(), "two modules, no top named");
+    let with = ir(&[path.to_str().unwrap(), "--module", "Top"]);
+    assert!(
+        with.status.success(),
+        "{}",
+        String::from_utf8_lossy(&with.stderr)
+    );
+    assert!(String::from_utf8_lossy(&with.stdout).starts_with("module Top"));
+}
+
+#[test]
+fn ir_output_writes_the_file() {
+    let dest = std::env::temp_dir().join(format!("mimz-ir-{}.ir", std::process::id()));
+    let out = ir(&[
+        repo("examples/english/adder.mimz").to_str().unwrap(),
+        "-o",
+        dest.to_str().unwrap(),
+    ]);
+    assert!(out.status.success());
+    assert!(out.stdout.is_empty(), "IR goes to the file, not stdout");
+    let text = std::fs::read_to_string(&dest).unwrap();
+    std::fs::remove_file(&dest).ok();
+    assert_eq!(text, library_ir("examples/english/adder.mimz"));
+}
+
+#[test]
+fn ir_output_to_an_unwritable_path_is_a_clean_error() {
+    let dest = repo("tests/fixtures/ir_cli/no-such-dir/out.ir");
+    let out = ir(&[
+        repo("examples/english/adder.mimz").to_str().unwrap(),
+        "-o",
+        dest.to_str().unwrap(),
+    ]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("error: cannot write"));
+}
+
+fn stderr(out: &std::process::Output) -> String {
+    String::from_utf8_lossy(&out.stderr).into_owned()
+}
+
+#[test]
+fn ir_limitation_is_a_clean_error_with_an_underline() {
+    let out = ir(&[repo("tests/fixtures/ir_cli/limitation.mimz")
+        .to_str()
+        .unwrap()]);
+    assert_eq!(out.status.code(), Some(1));
+    let err = stderr(&out);
+    assert!(
+        err.contains("IR lowering does not support this design yet"),
+        "{err}"
+    );
+    assert!(err.contains("IR limitation"), "{err}");
+    assert!(
+        err.contains("wire h: Handshake"),
+        "source line shown: {err}"
+    );
+    assert!(err.contains("not implemented"), "{err}");
+    assert!(err.contains("lower.rs"), "panic site: {err}");
+    assert!(err.contains("full text with -d"), "long message cut: {err}");
+    assert!(!err.contains("panicked at"), "default hook silenced: {err}");
+}
+
+#[test]
+fn ir_internal_error_names_the_bug_class() {
+    let path = repo("tests/fixtures/ir_cli/internal.mimz");
+    let out = ir(&[path.to_str().unwrap(), "--module", "Top"]);
+    assert_eq!(out.status.code(), Some(1));
+    let err = stderr(&out);
+    assert!(
+        err.contains("internal compiler error in IR lowering"),
+        "{err}"
+    );
+    assert!(err.contains("compiler bug"), "{err}");
+    assert!(err.contains("s__-1_y"), "{err}");
+    assert!(err.contains("o[i] ="), "source line shown: {err}");
+}
+
+#[test]
+fn ir_debug_adds_a_backtrace() {
+    let path = repo("tests/fixtures/ir_cli/internal.mimz");
+    let out = mimz()
+        .args(["-d", "ir", path.to_str().unwrap(), "--module", "Top"])
+        .output()
+        .unwrap();
+    assert!(stderr(&out).contains("backtrace:"), "{}", stderr(&out));
+}
+
+#[test]
+fn ir_panic_flag_crashes_on_an_internal_error() {
+    let path = repo("tests/fixtures/ir_cli/internal.mimz");
+    let out = ir(&[path.to_str().unwrap(), "--module", "Top", "--panic"]);
+    assert_eq!(out.status.code(), Some(101), "{}", stderr(&out));
+    assert!(
+        stderr(&out).contains("s__-1_y"),
+        "report printed before the crash"
+    );
+}
+
+#[test]
+fn ir_panic_flag_keeps_a_limitation_clean() {
+    let path = repo("tests/fixtures/ir_cli/limitation.mimz");
+    let out = ir(&[path.to_str().unwrap(), "--panic"]);
+    assert_eq!(out.status.code(), Some(1));
 }

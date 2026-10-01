@@ -277,6 +277,7 @@ impl<'a> LowerCtx<'a> {
         arrays: Option<&HashMap<String, u32>>,
         target_width: u32,
     ) -> Bits {
+        let _span = super::failure::enter_span(e.span);
         // `ExprKind::Int` is kept as its own arm rather than folded into the
         // `ConstVal` path below: its `value` field is already the exact
         // arbitrary-width `bits::Bits` the checker const-folded, so this
@@ -458,6 +459,7 @@ impl<'a> LowerCtx<'a> {
         locals: Option<&HashMap<String, Bits>>,
         arrays: Option<&HashMap<String, u32>>,
     ) -> Bits {
+        let _span = super::failure::enter_span(e.span);
         let site = std::ptr::from_ref(e) as usize;
         if locals.is_none()
             && let Some(bits) = self.expr_memo.get(&site)

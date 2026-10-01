@@ -1,5 +1,5 @@
 //! Runs the three IR optimizer passes (`fold_constants`, `simplify_muxes`,
-//! `eliminate_dead_cells`) over every example and extern fixture that lowers
+//! `eliminate_dead_cells`, together as `ir::opt::optimize`) over every example and extern fixture that lowers
 //! `validate`-clean,
 //! and checks the result is still `validate`-clean, computes the same
 //! outputs, and is a fixpoint. See
@@ -8,7 +8,7 @@
 use mimz_core::ast::Dir;
 use mimz_core::ir::Module;
 use mimz_core::ir::exec::Executor;
-use mimz_core::ir::opt::{eliminate_dead_cells, fold_constants, simplify_muxes};
+use mimz_core::ir::opt::optimize;
 use mimz_core::ir::validate::validate;
 use mimz_core::value::Val;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -38,18 +38,6 @@ fn lowered(path: &Path) -> Option<Module> {
     let design = mimz_core::elaborate::elaborate_project(&asts, None, &Default::default()).ok()?;
     let module = catch_unwind(AssertUnwindSafe(|| mimz_core::ir::lower(&design))).ok()?;
     validate(&module).is_empty().then_some(module)
-}
-
-/// All three passes, repeated until none changes anything. Returns the
-/// number of rounds that changed something.
-fn optimize(module: &mut Module) -> usize {
-    let mut rounds = 0;
-    // `|`, not `||`: every pass runs every round.
-    while fold_constants(module) | simplify_muxes(module) | eliminate_dead_cells(module) {
-        rounds += 1;
-        assert!(rounds < 20, "optimizer did not converge");
-    }
-    rounds
 }
 
 /// Every output port's value after each of 4 ticks, with every input port

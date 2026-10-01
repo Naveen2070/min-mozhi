@@ -22,9 +22,19 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1539 tests** as of 2026-09-29 (`cargo test --workspace`; the count is
+**1564 tests** as of 2026-10-01 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
-+4 from the final-review fixes on the IR lowering and validate plan:
++25 from the IR optimizer pipeline and `mimz ir` command
+(`docs/superpowers/plans/2026-10-01-ir-pipeline-cli.local.md`): the new
+`crates/mimz-core/src/ir/tests/opt_pipeline.rs` (1:
+`optimize_runs_all_three_passes_to_a_fixpoint`), the new
+`crates/mimz-core/src/ir/tests/failure.rs` (13: `ir::failure::catch`'s
+classification, panic site, innermost/default/nested span stack, other-thread
+isolation, backtrace, `resume`, and two real-source reproducers, one per
+failure class) and `tests/cli.rs` (+11 `ir_*`: line/s-expression output,
+`--no-opt`, `--module`, `-o`, an unwritable `-o`, both failure reports,
+`-d` backtrace, `--panic` crash vs a clean limitation). Previously, as of
+2026-09-29 at 1539: +4 from the final-review fixes on the IR lowering and validate plan:
 `lower_if.rs` (+2: `a_callers_let_constant_never_decides_a_callees_condition`,
 `a_callers_let_constant_never_folds_a_callees_let`) and `validate.rs` (+2:
 `a_declared_extern_output_named_q_is_driven_once`,
@@ -341,7 +351,7 @@ against a bare bundle-typed `fn` parameter inside that fn's own body
 
 | Where it lives                                      |    Count | Kind                                                   |
 | --------------------------------------------------- | -------: | ------------------------------------------------------ |
-| `crates/mimz-core/src/**` (lib unit)                |      965 | in-process, `#[cfg(test)] mod tests`                   |
+| `crates/mimz-core/src/**` (lib unit)                |      979 | in-process, `#[cfg(test)] mod tests`                   |
 | `crates/mimz-sim/src/**` (lib unit)                 |       90 | in-process                                             |
 | `src/**` (mimz shell crate, lib unit)               |       51 | in-process (`config`, `emulate`, `project`)            |
 | `src/lsp.rs` + `src/main.rs` (bin/lib `mod lsp`)    |        7 | in-process (`lsp`)                                     |
@@ -350,7 +360,7 @@ against a bare bundle-typed `fn` parameter inside that fn's own body
 | doctests (×4 crates)                                |        0 | none currently - runnable examples live in `examples/` |
 | `crates/mimz-sim/tests/sim_errors.rs`               |       81 | crate integration                                      |
 | `crates/mimz-core/tests/width_rules_conformance.rs` |        2 | crate integration                                      |
-| `tests/cli.rs`                                      |        6 | workspace integration (runs the binary)                |
+| `tests/cli.rs`                                      |       17 | workspace integration (runs the binary)                |
 | `tests/compile_string.rs`                           |       14 | workspace integration (in-process lib)                 |
 | `tests/config.rs`                                   |        7 | workspace integration                                  |
 | `tests/differential_fuzz.rs`                        |        8 | workspace integration (generative + Icarus + IR)       |
