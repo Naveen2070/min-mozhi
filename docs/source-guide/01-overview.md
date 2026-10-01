@@ -62,7 +62,7 @@ src/                       # shell crate - CLI, fs I/O, LSP, hw-emulation
 ├── project.rs                # Loading files and resolving imports (fs-touching half)
 ├── emulate/                  # Native hw-emulation peripherals, `hw-emulation` feature (7 files)
 ├── lsp.rs                    # Language server (optional, `lsp` feature)
-└── commands/                 # CLI command handlers (16 files)
+└── commands/                 # CLI command handlers (17 files)
 ```
 
 Now let's walk through each piece, one at a time. The rest of this guide is split into chapters - each chapter covers one folder or group of related files.

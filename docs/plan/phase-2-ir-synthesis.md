@@ -122,14 +122,13 @@ build`/`mimz test` path. Exit criterion #2's "lower to IR, pass IR
 
 > `ir::opt::fold_constants` (2026-09-24,
 > `docs/superpowers/specs/2026-09-24-ir-const-fold-design.local.md`) is a
-> standalone function. It is **not yet wired** into `mimz build`, `ir::lower`
-> or any CLI flag. Wiring is a follow-up once all three passes exist and can
-> be composed through `ir::opt::run_to_fixpoint`. It also leaves the cells it
+> standalone pass, wired 2026-10-01 into `ir::opt::optimize` together with the
+> other two and reached through `mimz ir`. It also leaves the cells it
 > folded around as dead upstream cells, which is dead-cell elimination's job.
 >
 > `ir::opt::eliminate_dead_cells` (2026-09-27,
 > `docs/superpowers/specs/2026-09-27-ir-dead-cell-elim-design.local.md`) is
-> likewise standalone and **not yet wired** into any build or CLI path. It
+> likewise a standalone pass, wired 2026-10-01 into `ir::opt::optimize`. It
 > removes only combinational cells. Dead registers, memories and black boxes
 > are always kept, and eliminating those is still open (a future
 > full-liveness pass). After a removal it also drops the removed cells' nets
@@ -138,7 +137,8 @@ build`/`mimz test` path. Exit criterion #2's "lower to IR, pass IR
 >
 > `ir::opt::simplify_muxes` (2026-09-27,
 > `docs/superpowers/specs/2026-09-27-ir-mux-simplify-design.local.md`) is
-> likewise standalone and **not yet wired**. It bypasses a mux with a
+> likewise a standalone pass, wired 2026-10-01 into `ir::opt::optimize`. It
+> bypasses a mux with a
 > constant select, a mux bit whose two data bits agree, and an inner mux on
 > the same select, by rewiring readers; `eliminate_dead_cells` then removes
 > the bypassed muxes. `tests/ir_opt_corpus.rs` runs all three passes to a
@@ -151,6 +151,19 @@ build`/`mimz test` path. Exit criterion #2's "lower to IR, pass IR
 > no top named); since 2026-09-29 `ripple_adder.mimz` lowers and extern
 > designs (`tests/fixtures/extern/`) are `validate`-clean and in the corpus
 > too.
+>
+> Wiring (2026-10-01,
+> `docs/superpowers/specs/2026-10-01-ir-pipeline-cli-design.local.md`):
+> `ir::opt::optimize` runs all three passes to a fixpoint (cap 32 rounds), and
+> `mimz ir` is its first CLI caller (lower, validate, optimize, validate,
+> print; a lowering failure is reported as an IR limitation or an internal
+> compiler error).
+>
+> Left for later (non-goals of that spec): `mimz build` and the synthesis
+> path; per-pass switches (`--passes fold,mux,dce`); `Display` for
+> `ir::validate::ValidationError` (the CLI prints `{:?}`); parsing or
+> round-tripping the printed IR; correct source spans in multi-file projects
+> (gaps.md).
 
 ### Synthesis path (pragmatic first)
 

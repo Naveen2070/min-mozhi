@@ -28,7 +28,7 @@ min-mozhi/
 │   ├── config.rs                # mimz.toml project config
 │   ├── emulate/                 # Native hw-emulation peripherals (7 files, `hw-emulation` feature)
 │   ├── lsp.rs                   # Language server (optional, lsp feature)
-│   ├── commands/                # CLI command handlers (16 files)
+│   ├── commands/                # CLI command handlers (17 files)
 │   └── bin/mimz-bench/          # Benchmark harness
 ├── crates/
 │   ├── mimz-core/src/           # Pure pipeline + most tooling

@@ -1,4 +1,5 @@
 mod exec;
+mod failure;
 mod lower_array_fn_params;
 mod lower_basic;
 mod lower_binops;
@@ -18,6 +19,7 @@ mod lower_unary_concat_slice;
 mod opt_const_fold;
 mod opt_dead_cell_elim;
 mod opt_mux_simplify;
+mod opt_pipeline;
 mod parse_line;
 mod print_line;
 mod print_sexpr;

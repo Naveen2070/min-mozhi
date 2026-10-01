@@ -1,0 +1,18 @@
+// `mimz ir` CLI fixture: a bundle-returning `fn` read through a field hits
+// an IR limitation (`unimplemented!` in ir::lower). Checks clean; compiles
+// to Verilog.
+bundle Handshake(W: int = 8) {
+  valid: bit
+  data:  bits[W]
+}
+
+fn make(v: bit) -> Handshake(W: 8) {
+  { valid: v, data: 0 }
+}
+
+module Top {
+  in  v: bit
+  out o: bit
+  wire h: Handshake(W: 8) = make(v)
+  o = h.valid
+}

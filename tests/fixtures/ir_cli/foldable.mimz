@@ -1,0 +1,9 @@
+// `mimz ir` CLI fixture: `m` is driven by a constant, so the optimizer
+// removes the mux and the dead adder; `--no-opt` keeps both.
+module M {
+  in a: bits[8]
+  in b: bits[8]
+  out o: bits[8]
+  wire m: bit = 1 == 1
+  o = if m { a } else { a +% b }
+}
