@@ -1791,6 +1791,13 @@ record in `docs/log/2026-10-01.md`).
 - **Printed IR does not round-trip.** Optimized output may not survive
   `print_line` -> `parse_line`: the arithmetic `signed` flag (sub-gap
   2026-09-21 above) and output ports aliasing input/`Const` nets.
+- **A limitation is underlined where elaborate put it, which may not be the
+  line that read it.** Ruled not a bug (2026-10-01 final review). For
+  `wire h: Handshake(W: 8) = make(v)` then `o = h.valid`, elaborate drives
+  each field wire of `h` from `make(v).<field>`, so lowering fails on the
+  wire's driver and `mimz ir` underlines `make(v)` on the `wire h` line,
+  the construct the IR cannot lower yet. If that judgment is wrong, users
+  see the declaration underlined rather than the `o = h.valid` read.
 - **The `Internal` CLI fixture depends on an open bug.**
   `tests/fixtures/ir_cli/internal.mimz` reproduces the constant-`if` fold
   limit above; once that is fixed the fixture needs another reproducer.

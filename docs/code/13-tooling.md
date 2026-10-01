@@ -477,7 +477,8 @@ for the session).
 
 ## `ir` (`src/commands/ir.rs`) - `mimz ir`
 
-- check -> `elaborate_project` -> `ir::lower` -> `validate` ->
+- check -> `elaborate_project_with_mode(.., SimMode::Lower)` -> `ir::lower` ->
+  `validate` ->
   `ir::opt::optimize` -> `validate` -> `print_line`/`print_sexpr`.
 - `lower` and `optimize` run inside `ir::failure::catch`
   (`crates/mimz-core/src/ir/failure.rs`): a panic becomes a `Failure`
@@ -490,6 +491,9 @@ for the session).
 - The span is underlined only for a single-file project: `Span` has no file
   index (gaps.md).
 - A `validate` failure after either stage is an internal error.
+- `SimMode::Lower` builds the same `Design` as `Warn` but skips the
+  simulation-only `extern module` warning: `mimz ir` does not simulate, an
+  extern instance becomes a `BlackBox` cell.
 
 ## Operational commands (bin-only: `init` / `doctor` / `completions` / `check --watch` / `repl` / `eject`)
 

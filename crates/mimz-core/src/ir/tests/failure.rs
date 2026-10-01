@@ -5,8 +5,9 @@ use crate::ir::failure::{FailureKind, Stage, catch, enter_span, span_depth};
 use crate::span::Span;
 use std::collections::BTreeMap;
 
-/// Real source that hits an `unimplemented!` in `ir::lower`: a
-/// bundle-returning `fn` call read through a field.
+/// Real source that hits an `unimplemented!` in `ir::lower`: a bundle-typed
+/// wire driven by a bundle-returning `fn`. Elaborate drives each field wire
+/// from `make(v).<field>`, so the failing expression sits on the `wire h` line.
 const LIMITATION: &str = "bundle Handshake(W: int = 8) {\n  valid: bit\n  data:  bits[W]\n}\n\nfn make(v: bit) -> Handshake(W: 8) {\n  { valid: v, data: 0 }\n}\n\nmodule Top {\n  in  v: bit\n  out o: bit\n  wire h: Handshake(W: 8) = make(v)\n  o = h.valid\n}\n";
 
 /// Real source that hits a broken invariant in `ir::lower`: the constant-`if`

@@ -80,7 +80,9 @@ fn optimizer_passes_preserve_every_example() {
             continue;
         }
         let mut opt = module.clone();
-        optimize(&mut opt);
+        let rounds = optimize(&mut opt);
+        // Tighter than `MAX_ROUNDS`: today's corpus settles in a few rounds.
+        assert!(rounds < 20, "{}: {rounds} rounds", path.display());
 
         let errs = validate(&opt);
         assert!(

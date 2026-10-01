@@ -72,6 +72,10 @@ pub enum SimMode {
     /// An extern instance is a hard `Err` at elaboration time, before any
     /// cycle runs.
     Strict,
+    /// Not simulating: elaborating for `ir::lower` (`mimz ir`), where an
+    /// extern instance becomes a `BlackBox` cell. Same `Design` as `Warn`,
+    /// without the simulation-only warning.
+    Lower,
 }
 
 /// Module registry across all loaded files: every `(file_idx, file, module)`

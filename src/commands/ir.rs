@@ -67,7 +67,12 @@ pub(crate) fn ir_file(
             return ExitCode::FAILURE;
         }
     };
-    let design = match elaborate::elaborate_project(&asts, module.as_deref(), &params) {
+    let design = match elaborate::elaborate_project_with_mode(
+        &asts,
+        module.as_deref(),
+        &params,
+        elaborate::SimMode::Lower,
+    ) {
         Ok(d) => d,
         Err(e) => {
             eprint!(
@@ -176,7 +181,13 @@ fn report(
     if let Some(loc) = &f.location {
         eprintln!("  at:    {loc}");
     }
-    if let Some(bt) = &f.backtrace {
+    // `--panic` captures a backtrace for the crash it may re-raise; a
+    // limitation stays a clean error, so only `-d` shows it one.
+    if let Some(bt) = f
+        .backtrace
+        .as_ref()
+        .filter(|_| debug || f.kind == FailureKind::Internal)
+    {
         eprintln!("  backtrace:\n{bt}");
     }
     if panic && f.kind == FailureKind::Internal {
