@@ -157,12 +157,12 @@ fn print_stats(lowered: &Module, optimized: Option<(&Module, usize)>) {
         .chain(after.iter().flat_map(|a| a.keys()))
         .collect();
     let row = |label: &str, b: usize, a: Option<usize>| match a {
-        Some(a) => eprintln!("{label:<12}{b:>9}{a:>11}"),
-        None => eprintln!("{label:<12}{b:>9}"),
+        Some(a) => eprintln!("{label:<12}{b:>8}{a:>11}"),
+        None => eprintln!("{label:<12}{b:>8}"),
     };
     match &after {
-        Some(_) => eprintln!("{:<12}{:>9}{:>11}", "cells", "lowered", "optimized"),
-        None => eprintln!("{:<12}{:>9}", "cells", "lowered"),
+        Some(_) => eprintln!("{:<12}{:>8}{:>11}", "cells", "lowered", "optimized"),
+        None => eprintln!("{:<12}{:>8}", "cells", "lowered"),
     }
     for k in kinds {
         let a = after.as_ref().map(|a| a.get(k).copied().unwrap_or(0));
@@ -179,7 +179,7 @@ fn print_stats(lowered: &Module, optimized: Option<(&Module, usize)>) {
         optimized.map(|(m, _)| m.nets.len()),
     );
     if let Some((_, rounds)) = optimized {
-        eprintln!("{:<12}{:>9}{rounds:>11}", "rounds", "");
+        eprintln!("{:<12}{:>8}{rounds:>11}", "rounds", "");
     }
 }
 

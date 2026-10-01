@@ -355,7 +355,8 @@ pub(super) fn flatten_instance(
 /// unconstrained (`Val::unknown`) read and prints one warning per instance
 /// (this function runs exactly once per `Inst` node during elaboration, so
 /// "once per distinct instance" falls out for free — no dedup bookkeeping
-/// needed). Every port — input AND output — also becomes a flat wire named
+/// needed); `lower` mode (`mimz ir`, not a simulation) does the same without
+/// the warning. Every port — input AND output — also becomes a flat wire named
 /// `{pfx}{port}` (an input driven by its rewritten connection expression,
 /// same as a real instance's inputs; an output left driverless, same as
 /// before) plus one `Design::extern_instances` entry, so `ir::lower` (Task
