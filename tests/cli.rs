@@ -368,3 +368,45 @@ fn ir_extern_design_prints_no_simulation_warning() {
         stderr(&out)
     );
 }
+
+#[test]
+fn ir_stats_prints_both_columns_to_stderr() {
+    let path = repo("tests/fixtures/ir_cli/foldable.mimz");
+    let out = ir(&[path.to_str().unwrap(), "--stats"]);
+    assert!(out.status.success());
+    assert!(
+        String::from_utf8_lossy(&out.stdout).starts_with("module M"),
+        "stdout is still IR"
+    );
+    let err = stderr(&out);
+    let header = err.lines().next().unwrap();
+    assert!(
+        header.starts_with("cells") && header.contains("lowered") && header.contains("optimized"),
+        "{err}"
+    );
+    let mux = err
+        .lines()
+        .find(|l| l.starts_with("Mux"))
+        .expect("a Mux row");
+    let cols: Vec<&str> = mux.split_whitespace().collect();
+    assert_eq!(cols, ["Mux", "1", "0"], "{err}");
+    for row in ["total", "nets", "rounds"] {
+        assert!(
+            err.lines().any(|l| l.starts_with(row)),
+            "missing {row}: {err}"
+        );
+    }
+}
+
+#[test]
+fn ir_stats_without_the_optimizer_has_one_column() {
+    let path = repo("tests/fixtures/ir_cli/foldable.mimz");
+    let err = stderr(&ir(&[path.to_str().unwrap(), "--stats", "--no-opt"]));
+    assert!(!err.contains("optimized"), "{err}");
+    assert!(!err.lines().any(|l| l.starts_with("rounds")), "{err}");
+    let mux = err
+        .lines()
+        .find(|l| l.starts_with("Mux"))
+        .expect("a Mux row");
+    assert_eq!(mux.split_whitespace().collect::<Vec<_>>(), ["Mux", "1"]);
+}

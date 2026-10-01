@@ -22,9 +22,13 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1566 tests** as of 2026-10-01 (`cargo test --workspace`; the count is
+**1568 tests** as of 2026-10-01 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
-+2 from the `mimz ir` final-review fixes: `tests/cli.rs`'s
++2 from `mimz ir --stats` (phase 2 of
+`docs/superpowers/plans/2026-10-01-ir-pipeline-cli.local.md`): `tests/cli.rs`'s
+`ir_stats_prints_both_columns_to_stderr` and
+`ir_stats_without_the_optimizer_has_one_column`. Previously, as of 2026-10-01
+at 1566: +2 from the `mimz ir` final-review fixes: `tests/cli.rs`'s
 `ir_extern_design_prints_no_simulation_warning` and the new
 `crates/mimz-core/tests/failure_hook.rs` (1:
 `a_panic_outside_catch_reaches_the_previous_hook`, its own process so its
@@ -366,7 +370,7 @@ against a bare bundle-typed `fn` parameter inside that fn's own body
 | `crates/mimz-sim/tests/sim_errors.rs`               |       81 | crate integration                                      |
 | `crates/mimz-core/tests/width_rules_conformance.rs` |        2 | crate integration                                      |
 | `crates/mimz-core/tests/failure_hook.rs`            |        1 | crate integration                                      |
-| `tests/cli.rs`                                      |       18 | workspace integration (runs the binary)                |
+| `tests/cli.rs`                                      |       20 | workspace integration (runs the binary)                |
 | `tests/compile_string.rs`                           |       14 | workspace integration (in-process lib)                 |
 | `tests/config.rs`                                   |        7 | workspace integration                                  |
 | `tests/differential_fuzz.rs`                        |        8 | workspace integration (generative + Icarus + IR)       |
