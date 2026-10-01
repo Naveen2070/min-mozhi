@@ -122,6 +122,7 @@ mimz ir examples/english/adder.mimz            # optimized IR, line form
 mimz ir design.mimz --no-opt                   # as lowered, no optimizer
 mimz ir design.mimz --sexpr -o design.ir       # s-expression form, to a file
 mimz ir alu.mimz --module Alu --param WIDTH=4  # pick a module, override params
+mimz ir design.mimz --stats                     # cell counts before/after, on stderr
 ```
 
 The IR is not available for every design yet. If lowering fails, `mimz ir`
@@ -132,6 +133,10 @@ says which kind of failure it is:
 - **Internal compiler error**: a compiler bug. Rerun with `-d` for a
   backtrace and please report it; `--panic` turns this into a real crash
   for a debugger.
+
+`--stats` prints how many cells of each kind the design has as lowered and
+after optimizing, plus the net count and how many optimizer rounds ran. It
+goes to stderr, so the IR on stdout can still be piped or saved.
 
 The printed IR is for reading. It is not guaranteed to parse back
 unchanged.

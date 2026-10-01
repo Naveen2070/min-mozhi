@@ -2,6 +2,7 @@
 //! and print the result. The IR pipeline's first CLI caller; see
 //! `docs/superpowers/specs/2026-10-01-ir-pipeline-cli-design.local.md`.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -27,6 +28,7 @@ pub(crate) fn ir_file(
     no_opt: bool,
     sexpr: bool,
     panic: bool,
+    stats: bool,
     lang: Option<&str>,
     config_path: Option<&Path>,
     quiet: bool,
@@ -94,15 +96,21 @@ pub(crate) fn ir_file(
     if let Err(code) = check_valid(&m, "lowered", panic) {
         return code;
     }
+    let lowered = stats.then(|| m.clone());
+    let mut rounds = None;
     if !no_opt {
-        if let Err(f) = failure::catch(Stage::Optimize, want_backtrace, || {
+        match failure::catch(Stage::Optimize, want_backtrace, || {
             ir::opt::optimize(&mut m)
         }) {
-            return report(f, &files, flavor, &design.module, panic, debug);
+            Ok(r) => rounds = Some(r),
+            Err(f) => return report(f, &files, flavor, &design.module, panic, debug),
         }
         if let Err(code) = check_valid(&m, "optimized", panic) {
             return code;
         }
+    }
+    if let Some(lowered) = &lowered {
+        print_stats(lowered, rounds.map(|r| (&m, r)));
     }
 
     let text = if sexpr {
@@ -123,6 +131,56 @@ pub(crate) fn ir_file(
         None => print!("{text}"),
     }
     ExitCode::SUCCESS
+}
+
+/// Cells per kind, keyed by the `CellKind` variant name.
+fn cell_counts(m: &Module) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for cell in &m.cells {
+        // ponytail: the variant name is the Debug text up to its fields.
+        let name: String = format!("{:?}", cell.kind)
+            .chars()
+            .take_while(|c| c.is_alphanumeric())
+            .collect();
+        *counts.entry(name).or_insert(0) += 1;
+    }
+    counts
+}
+
+/// The `--stats` table on stderr: one column as lowered, one optimized
+/// (when the optimizer ran), then totals, nets and rounds.
+fn print_stats(lowered: &Module, optimized: Option<(&Module, usize)>) {
+    let before = cell_counts(lowered);
+    let after = optimized.map(|(m, _)| cell_counts(m));
+    let kinds: BTreeSet<&String> = before
+        .keys()
+        .chain(after.iter().flat_map(|a| a.keys()))
+        .collect();
+    let row = |label: &str, b: usize, a: Option<usize>| match a {
+        Some(a) => eprintln!("{label:<12}{b:>9}{a:>11}"),
+        None => eprintln!("{label:<12}{b:>9}"),
+    };
+    match &after {
+        Some(_) => eprintln!("{:<12}{:>9}{:>11}", "cells", "lowered", "optimized"),
+        None => eprintln!("{:<12}{:>9}", "cells", "lowered"),
+    }
+    for k in kinds {
+        let a = after.as_ref().map(|a| a.get(k).copied().unwrap_or(0));
+        row(k, before.get(k).copied().unwrap_or(0), a);
+    }
+    row(
+        "total",
+        lowered.cells.len(),
+        optimized.map(|(m, _)| m.cells.len()),
+    );
+    row(
+        "nets",
+        lowered.nets.len(),
+        optimized.map(|(m, _)| m.nets.len()),
+    );
+    if let Some((_, rounds)) = optimized {
+        eprintln!("{:<12}{:>9}{rounds:>11}", "rounds", "");
+    }
 }
 
 const INTERNAL_HELP: &str = "an invariant the checker should guarantee broke. This is a \

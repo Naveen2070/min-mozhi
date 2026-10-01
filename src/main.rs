@@ -365,6 +365,10 @@ enum Cmd {
         /// limitation still exits 1 cleanly)
         #[arg(long)]
         panic: bool,
+        /// Print cell counts per kind (as lowered, and optimized) and the
+        /// optimizer's round count to stderr
+        #[arg(long)]
+        stats: bool,
         /// Error-message language: english | tanglish | tamil (default: the
         /// flavor the file predominantly uses)
         #[arg(short = 'l', long)]
@@ -707,6 +711,7 @@ fn main() -> ExitCode {
             no_opt,
             sexpr,
             panic,
+            stats,
             lang,
         } => {
             let cfg = match resolve_config(&file, config_path.as_deref()) {
@@ -722,6 +727,7 @@ fn main() -> ExitCode {
                 no_opt,
                 sexpr,
                 panic,
+                stats,
                 lang_str.as_deref(),
                 config_path.as_deref(),
                 quiet,
