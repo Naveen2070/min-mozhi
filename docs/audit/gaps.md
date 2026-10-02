@@ -59,8 +59,10 @@ the optimizer passes stay OPEN (as do the limits left by the 2026-09-29
 lowering fixes), while extern instances failing `validate`,
 `ripple_adder.mimz` panicking in `ir::lower` and an all-constant `if` not
 sized to its declared target were RESOLVED 2026-09-29. The limits of the
-2026-10-01 `mimz ir` command (no multi-file spans, text-based failure
-classification) are OPEN below. The gap's own
+2026-10-01 `mimz ir` command (no multi-file spans) are OPEN below, the
+text-based failure classification RESOLVED 2026-10-02; the IR modeling every reset as synchronous (filed
+2026-10-02) was RESOLVED the same day by per-register reset and the `Adff`
+cell. The gap's own
 headline claim — three consumers (checker/emitter/simulator) each
 carrying their own type model — stays OPEN regardless: the IR is a fourth
 consumer today, not yet a replacement for the other three's independent
@@ -729,7 +731,18 @@ the context is applied by the caller, either by `||` against a sibling or by
 stamping a declared type — see the third fix round above for why that is the
 rule rather than a to-do.
 
-### Sub-gap (2026-09-21, OPEN — Task 6 round-5 review): the arithmetic family's `signed` flag does not round-trip through IR text
+### Sub-gap (2026-09-21, RESOLVED 2026-10-02 for the line format — synthesis pre-prep Task 4): the arithmetic family's `signed` flag does not round-trip through IR text
+
+**Resolution.** `print_line::format_bits` writes a trailing `s` on every
+signed pin (`a=x[0:8]s`, `a={3,4}s`); `parse_line` strips it and marks only
+that pin's `Bits` signed (the shared name table keeps plain nets, since the
+same nets can be read signed by one cell and unsigned by another). An
+unknown suffix (`a[0:8]x`) stays a parse error. Pinned by
+`a_signed_name_form_pin_round_trips`, `a_signed_bracket_form_pin_round_trips`,
+`an_unknown_pin_suffix_is_an_error` and
+`signed_arithmetic_parsed_from_text_executes_signed` (`0 + (-3)` parsed
+from text executes as `0x1FD`, not `0x0FD`). The s-expression dump stays
+print-only. The text below is the original filing.
 
 **What.** Task 6's fourth fix round made `exec.rs`'s arithmetic family
 (`Add`/`Sub`/`Mul`/the `+%` family) read each operand pin's own
@@ -1294,7 +1307,7 @@ String, u32>>` was added as `locals`'s sibling parameter everywhere
      `Eq` (`push_binary_cell`) and `Mux` cells — no new `CellKind`. An
      out-of-range runtime index falls through every `Eq` to the
      unconditional last element, matching the emitter's ternary-chain
-     default (spec/02 §1.14) and `value::mod.rs`'s own clamp-to-last
+     default (spec/02 section 1.14) and `value::mod.rs`'s own clamp-to-last
      behaviour.
 
 New tests (`crates/mimz-core/src/ir/tests/lower_array_fn_params.rs`, new
@@ -1712,8 +1725,8 @@ would still panic. No example has it, but it is reachable from source (final
 review, 2026-09-29) wherever the `if` is lowered with no target width and no
 constant-adapting sibling: a concat part (`{if i == 0 { 0 } else
 { fa[i - 1].cout }, ...}` inside a `repeat`), a unary operand, a shift
-amount, or an index base. Tracked as OPEN in the sub-gap "limits left by the
-2026-09-29 lowering fixes" below.
+amount, or an index base. Tracked in the sub-gap "limits left by the
+2026-09-29 lowering fixes" below; the panic is RESOLVED 2026-10-02.
 
 ### Sub-gap (2026-09-27, RESOLVED 2026-09-29 — found by mux-simplify Task 2): an all-constant `if` expression is not sized to its declared target
 
@@ -1747,20 +1760,35 @@ Deferred Minor findings from the final review of
 `docs/superpowers/plans/2026-09-29-ir-lowering-validate-fixes.local.md`
 (record in `docs/log/2026-09-29.md`). None is hit by any example today.
 
-- **The constant-condition fold's known limit is reachable from source.**
-  `LowerCtx::lower_if` keeps the two-branch mux when the taken branch is a
-  constant, the dead branch is not, and there is no target width, so a
-  phantom dead branch there still panics in `resolve`. Contexts that reach
-  it: a concat part, a unary operand, a shift amount, an index base (see the
-  `ripple_adder.mimz` sub-gap above). Fix shape: size the constant taken
-  branch without lowering the dead one, for example from the checker's type
-  of the whole `if`, or lower the dead branch only when it resolves.
-- **`tests/ir_opt_corpus.rs` pins a total, not which files pass.**
-  `MIN_CHECKED = 222` counts checked files across `examples/` and
-  `tests/fixtures/extern/`. If one file regressed into a skip while another
-  started passing, the total would not move and the test would still pass.
-  Fix shape: assert that every file under `tests/fixtures/extern/` is
-  checked, or pin the exact skipped set (today the four `alu.mimz` flavors).
+- ~~**The constant-condition fold's known limit is reachable from
+  source.**~~ **RESOLVED 2026-10-02** (panic). `LowerCtx::lower_if` kept the
+  two-branch mux when the taken branch is a constant, the dead branch is
+  not, and there is no target width, so a phantom dead branch (`s[i - 1].y`
+  -> `s__-1_y` at `i == 0`) panicked in `resolve`. Root cause: `elaborate`
+  rewrites both branches before anything folds, so the dead one can name a
+  wire that was never created. Fix: `names_resolve` walks the dead branch;
+  it is lowered (to lend its width) only when every name it reads exists,
+  otherwise only the taken branch is lowered. Pinned by
+  `a_constant_taken_branch_never_lowers_a_dead_branch_that_names_nothing`,
+  with `a_constant_taken_branch_still_takes_a_real_dead_branchs_width`
+  guarding the resolving case (each fails when `names_resolve` is forced to
+  `true` or `false`). A `match` cannot reach this (a constant scrutinee is
+  `E0405`), nor can an out-of-range vector index (`E0406`).
+  **Still OPEN, narrower:** with a phantom dead branch the constant keeps
+  its natural width, not the checker's unified one (the dead branch's
+  declared port width). Same as `mimz sim` does today (BUG-77), but in a
+  width-sensitive position (`~`, a concat part, an index base) it differs
+  from the checker and Verilog. Fix shape: carry the port width of an
+  instance-array access through `elaborate` (one width per array, as the
+  checker's `inst_output_ty` uses), or fix BUG-77 and BUG-78 together.
+- ~~**`tests/ir_opt_corpus.rs` pins a total, not which files pass.**~~
+  **RESOLVED 2026-10-02** (synthesis pre-prep Task 5). The test now lowers
+  every module of every file as its own top and pins the exact
+  `file:module` skip list (`EXPECTED_SKIPS`) instead of `MIN_CHECKED = 222`.
+  The four `alu.mimz` flavors (two modules, no top named) used to be skipped
+  whole; each of their `Alu` and `Top` lowers, so the list is empty and 230
+  modules are checked. Forcing `Alu` to fail makes the test fail naming the
+  four `alu.mimz:Alu` entries.
 - **`if` results reached through `lower_expr_sized` bypass `expr_memo`.**
   The new `ExprKind::IfExpr` arm in `lower_expr_sized` calls `lower_if`
   directly, as its `Match` arm already calls `lower_match`, so neither
@@ -1782,15 +1810,33 @@ record in `docs/log/2026-10-01.md`).
   `source location not shown`. Fix shape: `elaborate` records a file index
   where it flattens an instance and inlines a `fn` (option ii in the spec).
   No test covers the multi-file branch.
-- **Classification is by panic text.** `Limitation` = message starts with
-  `not implemented` or contains `(S0227)`. A new `unimplemented!` is picked
-  up; a limitation written as `panic!` is reported as `Internal`. Fix
-  shape: `lower` returns a typed error.
-- **`ValidationError` has no `Display`.** `mimz ir` prints `{:?}` for a
-  `validate` failure.
-- **Printed IR does not round-trip.** Optimized output may not survive
-  `print_line` -> `parse_line`: the arithmetic `signed` flag (sub-gap
-  2026-09-21 above) and output ports aliasing input/`Const` nets.
+- ~~**Classification is by panic text.**~~ **RESOLVED 2026-10-02**
+  (synthesis pre-prep Task 2). `Limitation` used to mean "message starts
+  with `not implemented` or contains `(S0227)`". Now `lower` declares a
+  limitation through `ir::failure::limitation(msg)`, which sets a
+  thread-local flag before panicking with the same `not implemented: ...`
+  text; `catch` clears the flag on entry and reads it after unwinding. A
+  bare `unimplemented!` or a `panic!` carrying the old text is `Internal`.
+  Pinned by `a_declared_limitation_is_a_limitation`,
+  `a_bare_unimplemented_is_internal`,
+  `the_text_alone_no_longer_makes_a_limitation` and
+  `a_limitation_does_not_leak_into_the_next_catch`. A typed `Result` from
+  `lower` was not needed: the panic keeps its span and site capture.
+- ~~**`ValidationError` has no `Display`.**~~ **RESOLVED 2026-10-02**
+  (synthesis pre-prep Task 3). `ValidationError` now has a one-line
+  `Display` naming the cell index, net or port
+  (``cell 2: pin `a` is 4 bits, expected 8``); `mimz ir` prints it for a `validate` failure (the
+  `--panic` crash text keeps `{:?}`). Pinned by
+  `every_validation_error_has_a_one_line_message`.
+- **Printed IR does not round-trip** (narrowed 2026-10-02: the signed flag
+  now round-trips, sub-gap 2026-09-21 above). An output port whose nets are
+  another signal's or a cell's unnamed nets does not survive `print_line` ->
+  `parse_line`: the `port` line carries only a width, so the parsed port is
+  connected to nothing and reads 0. Found in pre-prep Task 4 on a plain
+  lowered `o = a + (-3)` (the `$add` writes `{16..24}`, the port prints as
+  `o[0:9]`), so it hits ordinary lowered output, not only input/`Const`
+  aliasing. Fix shape: print each output port's nets (or name the driver's
+  nets after the port) so the parser can connect them.
 - **A limitation is underlined where elaborate put it, which may not be the
   line that read it.** Ruled not a bug (2026-10-01 final review). For
   `wire h: Handshake(W: 8) = make(v)` then `o = h.valid`, elaborate drives
@@ -1799,8 +1845,45 @@ record in `docs/log/2026-10-01.md`).
   the construct the IR cannot lower yet. If that judgment is wrong, users
   see the declaration underlined rather than the `o = h.valid` read.
 - **The `Internal` CLI fixture depends on an open bug.**
-  `tests/fixtures/ir_cli/internal.mimz` reproduces the constant-`if` fold
-  limit above; once that is fixed the fixture needs another reproducer.
+  `tests/fixtures/ir_cli/internal.mimz` (and `INTERNAL` in
+  `ir/tests/failure.rs`) reproduce BUG-78, a live read of instance `s[-1]`
+  the checker accepts. They reproduced the constant-`if` fold limit until
+  that was fixed on 2026-10-02. Once BUG-78 is fixed they need another
+  reproducer.
+
+### Sub-gap (2026-10-02, RESOLVED 2026-10-02 — found writing `spec/07-ir.md`): the IR models every reset as synchronous
+
+**What.** `elaborate::module` drops the `async` marker of `async reset`
+(`ModuleItem::Reset { name, .. }` records only the name, by design: the
+cycle-based kernel cannot see the difference). `ir::lower` then puts a `Mux`
+(reset selects the reset value) in front of each register's `Dff.d`, which
+is a synchronous reset. It also uses only `design.resets.first()`.
+
+**Why it matters.** Simulation is unaffected. Synthesis is not: a backend
+that emits from the IR turns an `async reset` design into a sync-reset one,
+which is different hardware. The Verilog emitter (AST path) still emits
+async resets correctly.
+
+**Fix shape.** Carry `is_async` on `elaborate::Design`'s resets and give the
+IR an async-reset form (a `Dff` with `arst`/`arst_value` pins, or a separate
+`Adff` kind), with `validate`/`exec`/printers updated. Must close before the
+synthesis path emits from the IR (`docs/plan/phase-2-ir-synthesis.md`).
+
+**Resolution (2026-10-02).** Each `elaborate::Reg` now carries its own
+module's reset (`reset_by: Option<RegReset>`: first declared reset, async when
+any reset in that module is `async`; a child's reset is renamed through its
+connection). `ir::lower` gives a sync-reset register a `Mux` before a plain
+`Dff` and an async-reset register a new `CellKind::Adff` (pins `d`, `q`,
+`arst`); `exec`, `validate`, the line printer/parser and the optimizer know
+the new kind (spec/07-ir.md v0.2). Tests in `ir/tests/lower_regs.rs`:
+`an_async_reset_register_lowers_to_adff`,
+`a_sync_reset_register_still_lowers_to_mux_and_dff`,
+`an_async_reset_on_a_falling_edge_keeps_the_edge`,
+`a_child_keeps_its_own_async_reset_under_a_sync_parent`,
+`a_child_reset_follows_its_connection`; and `ir/tests/parse_line.rs`:
+`an_adff_round_trips_through_line_text`. The probe for the same shape on the
+simulator found BUG-79 (`mimz sim` clears every register on any reset), which
+is open and separate.
 
 ---
 

@@ -101,3 +101,53 @@ fn an_unknown_comparison_bracket_argument_is_rejected() {
     let text = "module m\n\ncell $lt[signd] :0 a={0} b={1} out={2}\n";
     assert!(parse_line::parse(text).is_err());
 }
+
+#[test]
+fn an_adff_round_trips_through_line_text() {
+    let text = "module m\nport in d[0:4]\nport in arst[0:1]\nport out q[0:4]\n\ncell $adff[Fall:4'd5] :0 arst=arst[0:1] d=d[0:4] q=q[0:4]\n";
+    let module = crate::ir::parse_line::parse(text).expect("parses");
+    assert!(matches!(
+        &module.cells[0].kind,
+        crate::ir::CellKind::Adff { edge: crate::ast::Edge::Fall, value, .. } if value.width == 4
+    ));
+    assert_eq!(crate::ir::print_line::print(&module), text);
+}
+
+#[test]
+fn a_signed_name_form_pin_round_trips() {
+    let text = "module m\nport in a[0:8]\nport in b[0:8]\nport out o[0:9]\n\ncell $add :0 a=a[0:8]s b=b[0:8]s out=o[0:9]s\n";
+    let module = parse_line::parse(text).expect("parses");
+    assert!(module.cells[0].pins["a"].signed);
+    assert!(module.cells[0].pins["out"].signed);
+    assert_eq!(print_line::print(&module), text);
+}
+
+#[test]
+fn a_signed_bracket_form_pin_round_trips() {
+    let text = "module m\n\ncell $neg :0 a={3,4}s out={5,6,7}s\n";
+    let module = parse_line::parse(text).expect("parses");
+    assert!(module.cells[0].pins["a"].signed);
+    assert_eq!(print_line::print(&module), text);
+}
+
+#[test]
+fn an_unknown_pin_suffix_is_an_error() {
+    let text = "module m\nport in a[0:8]\n\ncell $not :0 a=a[0:8]x out=o[0:8]\n";
+    assert!(parse_line::parse(text).is_err());
+}
+
+#[test]
+fn signed_arithmetic_parsed_from_text_executes_signed() {
+    // `0 + (-3)` with both pins signed sign-extends to 0x1FD in 9 bits
+    // (GAP-1 Task 6 round 4, F6); read unsigned, as every parsed pin was
+    // before, it is 0x0FD. Hand-written text, not a lowered module reprinted:
+    // a lowered output port aliasing a cell's unnamed nets does not
+    // round-trip (gaps.md), which is a separate limit.
+    let text = "module m\nport in a[0:8]\nport in b[0:8]\nport out o[0:9]\n\ncell $add :0 a=a[0:8]s b=b[0:8]s out=o[0:9]s\n";
+    let module = parse_line::parse(text).expect("parses");
+    let mut ex = crate::ir::exec::Executor::new(&module);
+    ex.set_input("a", crate::value::Val::new(0, 8, false));
+    ex.set_input("b", crate::value::Val::new(0xFD, 8, false));
+    ex.tick();
+    assert_eq!(ex.get_output("o").bits, crate::bits::Bits::Small(0x1FD));
+}

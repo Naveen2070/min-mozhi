@@ -22,9 +22,33 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1568 tests** as of 2026-10-01 (`cargo test --workspace`; the count is
+**1583 tests** as of 2026-10-02 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
-+2 from `mimz ir --stats` (phase 2 of
++4 from signed pins in the IR line format (synthesis pre-prep Task 4):
+`ir/tests/parse_line.rs`'s `a_signed_name_form_pin_round_trips`,
+`a_signed_bracket_form_pin_round_trips`, `an_unknown_pin_suffix_is_an_error`
+and `signed_arithmetic_parsed_from_text_executes_signed`. Previously, as of
+2026-10-02 at 1579: +1 from `Display` for `ValidationError` (synthesis pre-prep Task 3):
+`ir/tests/validate.rs`'s `every_validation_error_has_a_one_line_message`.
+Previously, as of 2026-10-02 at 1578: +2 from typed IR limitations (synthesis pre-prep Task 2): `ir/tests/failure.rs`
+replaced `unimplemented_is_a_limitation` and
+`the_loop_budget_panic_is_a_limitation` with
+`a_declared_limitation_is_a_limitation`, `a_bare_unimplemented_is_internal`,
+`the_text_alone_no_longer_makes_a_limitation` and
+`a_limitation_does_not_leak_into_the_next_catch`. Previously, as of
+2026-10-02 at 1576: +6 from the per-register reset / `Adff` change (synthesis pre-prep Task 1):
+`lower_regs.rs`'s `an_async_reset_register_lowers_to_adff`,
+`a_sync_reset_register_still_lowers_to_mux_and_dff`,
+`an_async_reset_on_a_falling_edge_keeps_the_edge`,
+`a_child_keeps_its_own_async_reset_under_a_sync_parent` and
+`a_child_reset_follows_its_connection`, plus `parse_line.rs`'s
+`an_adff_round_trips_through_line_text`. Previously, as of 2026-10-02 at
+1570: +2 from the constant-`if` dead-branch fix (gaps.md GAP-1): `lower_if.rs`'s
+`a_constant_taken_branch_never_lowers_a_dead_branch_that_names_nothing` and
+`a_constant_taken_branch_still_takes_a_real_dead_branchs_width`; the `mimz ir`
+internal-error reproducer (`tests/fixtures/ir_cli/internal.mimz`, `INTERNAL`
+in `ir/tests/failure.rs`) now reproduces BUG-78 instead. Previously, as of
+2026-10-01 at 1568: +2 from `mimz ir --stats` (phase 2 of
 `docs/superpowers/plans/2026-10-01-ir-pipeline-cli.local.md`): `tests/cli.rs`'s
 `ir_stats_prints_both_columns_to_stderr` and
 `ir_stats_without_the_optimizer_has_one_column`. Previously, as of 2026-10-01
@@ -358,46 +382,46 @@ against a bare bundle-typed `fn` parameter inside that fn's own body
 (`h ?? 0`), closing the "bare bundle-typed fn parameter" sub-gap in
 `docs/audit/gaps.md`:
 
-| Where it lives                                      |    Count | Kind                                                   |
-| --------------------------------------------------- | -------: | ------------------------------------------------------ |
-| `crates/mimz-core/src/**` (lib unit)                |      979 | in-process, `#[cfg(test)] mod tests`                   |
-| `crates/mimz-sim/src/**` (lib unit)                 |       90 | in-process                                             |
-| `src/**` (mimz shell crate, lib unit)               |       51 | in-process (`config`, `emulate`, `project`)            |
-| `src/lsp.rs` + `src/main.rs` (bin/lib `mod lsp`)    |        7 | in-process (`lsp`)                                     |
-| `src/bin/mimz-bench/` (bin unit)                    |        6 | in-process                                             |
-| `crates/mimz-wasm` (lib unit)                       |        0 | no unit tests - covered via `wasm_parity`              |
-| doctests (×4 crates)                                |        0 | none currently - runnable examples live in `examples/` |
-| `crates/mimz-sim/tests/sim_errors.rs`               |       81 | crate integration                                      |
-| `crates/mimz-core/tests/width_rules_conformance.rs` |        2 | crate integration                                      |
-| `crates/mimz-core/tests/failure_hook.rs`            |        1 | crate integration                                      |
-| `tests/cli.rs`                                      |       20 | workspace integration (runs the binary)                |
-| `tests/compile_string.rs`                           |       14 | workspace integration (in-process lib)                 |
-| `tests/config.rs`                                   |        7 | workspace integration                                  |
-| `tests/differential_fuzz.rs`                        |        8 | workspace integration (generative + Icarus + IR)       |
-| `tests/docs_sync.rs`                                |        6 | workspace integration (doc staleness guard)            |
-| `tests/errors.rs`                                   |        4 | workspace integration (error fixtures)                 |
-| `tests/eval.rs`                                     |       15 | workspace integration                                  |
-| `tests/examples.rs`                                 |       13 | workspace integration (golden `.v`)                    |
-| `tests/extern.rs`                                   |        5 | workspace integration                                  |
-| `tests/fmt.rs`                                      |        9 | workspace integration                                  |
-| `tests/grammar.rs`                                  |       16 | workspace integration                                  |
-| `tests/grammar_sync.rs`                             |        6 | workspace integration (spec staleness guard)           |
-| `tests/icarus.rs`                                   |       16 | differential (needs `iverilog`)                        |
-| `tests/ir_golden.rs`                                |        5 | workspace integration (golden IR-text snapshots)       |
-| `tests/ir_opt_corpus.rs`                            |        1 | workspace integration (IR optimizer over the corpus)   |
-| `tests/ir_validation.rs`                            |        6 | workspace integration (IR validation-rejection corpus) |
-| `tests/lab_lessons.rs`                              |        1 | workspace integration (lab content gate, site plan W6) |
-| `tests/lsp.rs`                                      |        1 | workspace integration (smoke)                          |
-| `tests/morph.rs`                                    |       20 | workspace integration                                  |
-| `tests/packages.rs`                                 |        2 | workspace integration                                  |
-| `tests/self_determined_regression.rs`               |      116 | workspace integration (BUG-19/20/23/24)                |
-| `tests/showcase.rs`                                 |        6 | workspace integration                                  |
-| `tests/sim.rs`                                      |       17 | workspace integration                                  |
-| `tests/stdlib.rs`                                   |       11 | workspace integration                                  |
-| `tests/test_run.rs`                                 |        9 | workspace integration                                  |
-| `tests/translate.rs`                                |       15 | workspace integration                                  |
-| `tests/wasm_parity.rs`                              |        2 | workspace integration (CLI vs. WASM)                   |
-| **Total**                                           | **1418** |                                                        |
+| Where it lives                                      |    Count | Kind                                                                                  |
+| --------------------------------------------------- | -------: | ------------------------------------------------------------------------------------- |
+| `crates/mimz-core/src/**` (lib unit)                |      979 | in-process, `#[cfg(test)] mod tests`                                                  |
+| `crates/mimz-sim/src/**` (lib unit)                 |       90 | in-process                                                                            |
+| `src/**` (mimz shell crate, lib unit)               |       51 | in-process (`config`, `emulate`, `project`)                                           |
+| `src/lsp.rs` + `src/main.rs` (bin/lib `mod lsp`)    |        7 | in-process (`lsp`)                                                                    |
+| `src/bin/mimz-bench/` (bin unit)                    |        6 | in-process                                                                            |
+| `crates/mimz-wasm` (lib unit)                       |        0 | no unit tests - covered via `wasm_parity`                                             |
+| doctests (×4 crates)                                |        0 | none currently - runnable examples live in `examples/`                                |
+| `crates/mimz-sim/tests/sim_errors.rs`               |       81 | crate integration                                                                     |
+| `crates/mimz-core/tests/width_rules_conformance.rs` |        2 | crate integration                                                                     |
+| `crates/mimz-core/tests/failure_hook.rs`            |        1 | crate integration                                                                     |
+| `tests/cli.rs`                                      |       20 | workspace integration (runs the binary)                                               |
+| `tests/compile_string.rs`                           |       14 | workspace integration (in-process lib)                                                |
+| `tests/config.rs`                                   |        7 | workspace integration                                                                 |
+| `tests/differential_fuzz.rs`                        |        8 | workspace integration (generative + Icarus + IR)                                      |
+| `tests/docs_sync.rs`                                |        6 | workspace integration (doc staleness guard)                                           |
+| `tests/errors.rs`                                   |        4 | workspace integration (error fixtures)                                                |
+| `tests/eval.rs`                                     |       15 | workspace integration                                                                 |
+| `tests/examples.rs`                                 |       13 | workspace integration (golden `.v`)                                                   |
+| `tests/extern.rs`                                   |        5 | workspace integration                                                                 |
+| `tests/fmt.rs`                                      |        9 | workspace integration                                                                 |
+| `tests/grammar.rs`                                  |       16 | workspace integration                                                                 |
+| `tests/grammar_sync.rs`                             |        6 | workspace integration (spec staleness guard)                                          |
+| `tests/icarus.rs`                                   |       16 | differential (needs `iverilog`)                                                       |
+| `tests/ir_golden.rs`                                |        5 | workspace integration (golden IR-text snapshots)                                      |
+| `tests/ir_opt_corpus.rs`                            |        1 | workspace integration (IR optimizer over every corpus module; exact skip list pinned) |
+| `tests/ir_validation.rs`                            |        6 | workspace integration (IR validation-rejection corpus)                                |
+| `tests/lab_lessons.rs`                              |        1 | workspace integration (lab content gate, site plan W6)                                |
+| `tests/lsp.rs`                                      |        1 | workspace integration (smoke)                                                         |
+| `tests/morph.rs`                                    |       20 | workspace integration                                                                 |
+| `tests/packages.rs`                                 |        2 | workspace integration                                                                 |
+| `tests/self_determined_regression.rs`               |      116 | workspace integration (BUG-19/20/23/24)                                               |
+| `tests/showcase.rs`                                 |        6 | workspace integration                                                                 |
+| `tests/sim.rs`                                      |       17 | workspace integration                                                                 |
+| `tests/stdlib.rs`                                   |       11 | workspace integration                                                                 |
+| `tests/test_run.rs`                                 |        9 | workspace integration                                                                 |
+| `tests/translate.rs`                                |       15 | workspace integration                                                                 |
+| `tests/wasm_parity.rs`                              |        2 | workspace integration (CLI vs. WASM)                                                  |
+| **Total**                                           | **1418** |                                                                                       |
 
 Fixture counts (current): **120** error fixtures (`tests/fixtures/errors/*.mimz`,
 plus a `README.md` and the `e0110_support/` helper folder) · **8** grammar

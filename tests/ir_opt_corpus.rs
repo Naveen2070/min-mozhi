@@ -1,8 +1,9 @@
 //! Runs the three IR optimizer passes (`fold_constants`, `simplify_muxes`,
-//! `eliminate_dead_cells`, together as `ir::opt::optimize`) over every example and extern fixture that lowers
-//! `validate`-clean,
+//! `eliminate_dead_cells`, together as `ir::opt::optimize`) over every module
+//! of every example and extern fixture that lowers `validate`-clean,
 //! and checks the result is still `validate`-clean, computes the same
-//! outputs, and is a fixpoint. See
+//! outputs, and is a fixpoint. Every module that does not lower is named in
+//! `EXPECTED_SKIPS`. See
 //! `docs/superpowers/specs/2026-09-27-ir-mux-simplify-design.local.md`.
 
 use mimz_core::ast::Dir;
@@ -14,9 +15,11 @@ use mimz_core::value::Val;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 
-/// Floor on the examples actually checked, so the test cannot pass by
-/// skipping everything. Set to the count observed when this was added.
-const MIN_CHECKED: usize = 222;
+/// Every file:module the corpus test skips, with why. A file that starts or
+/// stops lowering changes this list, so the test names it. Empty since
+/// 2026-10-02: lowering each module of a multi-module file as its own top
+/// (`alu.mimz`'s `Alu` and `Top`) left nothing unchecked (230 modules).
+const EXPECTED_SKIPS: &[&str] = &[];
 
 fn mimz_files(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in std::fs::read_dir(dir).unwrap() {
@@ -29,15 +32,43 @@ fn mimz_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// The lowered module, or `None` when any pipeline step fails or the result
-/// is not `validate`-clean (the optimizer's precondition).
-fn lowered(path: &Path) -> Option<Module> {
-    let files = mimz::project::load_project(path).ok()?;
+/// Every module of the file at `path`, lowered as the top: `(name, Some(module))`
+/// when it lowers `validate`-clean, `(name, None)` otherwise. A file that does
+/// not load, check or name any module yields one `("<file>", None)` entry.
+fn lowered_modules(path: &Path) -> Vec<(String, Option<Module>)> {
+    let fail = || vec![("<file>".to_string(), None)];
+    let Ok(files) = mimz::project::load_project(path) else {
+        return fail();
+    };
     let asts: Vec<mimz_core::ast::File> = files.iter().map(|f| f.ast.clone()).collect();
-    mimz_core::checker::check(&asts).ok()?;
-    let design = mimz_core::elaborate::elaborate_project(&asts, None, &Default::default()).ok()?;
-    let module = catch_unwind(AssertUnwindSafe(|| mimz_core::ir::lower(&design))).ok()?;
-    validate(&module).is_empty().then_some(module)
+    if mimz_core::checker::check(&asts).is_err() {
+        return fail();
+    }
+    // `load_project` always puts the entry file at `files[0]`.
+    let names: Vec<String> = asts[0]
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            mimz_core::ast::TopItem::Module(m) => Some(m.name.name.clone()),
+            _ => None,
+        })
+        .collect();
+    if names.is_empty() {
+        return fail();
+    }
+    names
+        .into_iter()
+        .map(|name| {
+            let module =
+                mimz_core::elaborate::elaborate_project(&asts, Some(&name), &Default::default())
+                    .ok()
+                    .and_then(|design| {
+                        catch_unwind(AssertUnwindSafe(|| mimz_core::ir::lower(&design))).ok()
+                    })
+                    .filter(|m| validate(m).is_empty());
+            (name, module)
+        })
+        .collect()
 }
 
 /// Every output port's value after each of 4 ticks, with every input port
@@ -71,42 +102,42 @@ fn optimizer_passes_preserve_every_example() {
     mimz_files(&root.join("tests/fixtures/extern"), &mut files);
     files.sort();
     let mut checked = 0;
+    let mut skipped: Vec<String> = Vec::new();
     for path in &files {
-        let Some(module) = lowered(path) else {
-            continue;
-        };
-        // `Val::new` takes a u128.
-        if module.ports.iter().any(|(_, bits, _)| bits.width() > 128) {
-            continue;
-        }
-        let mut opt = module.clone();
-        let rounds = optimize(&mut opt);
-        // Tighter than `MAX_ROUNDS`: today's corpus settles in a few rounds.
-        assert!(rounds < 20, "{}: {rounds} rounds", path.display());
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        for (name, module) in lowered_modules(path) {
+            let at = format!("{rel}:{name}");
+            // `Val::new` takes a u128.
+            let Some(module) =
+                module.filter(|m| m.ports.iter().all(|(_, bits, _)| bits.width() <= 128))
+            else {
+                skipped.push(at);
+                continue;
+            };
+            let mut opt = module.clone();
+            let rounds = optimize(&mut opt);
+            // Tighter than `MAX_ROUNDS`: today's corpus settles in a few rounds.
+            assert!(rounds < 20, "{at}: {rounds} rounds");
 
-        let errs = validate(&opt);
-        assert!(
-            errs.is_empty(),
-            "{}: optimized module fails validate: {errs:?}",
-            path.display()
-        );
-        assert_eq!(
-            trace(&opt),
-            trace(&module),
-            "{}: outputs changed",
-            path.display()
-        );
-        assert_eq!(
-            optimize(&mut opt),
-            0,
-            "{}: a second run changed something",
-            path.display()
-        );
-        checked += 1;
+            let errs = validate(&opt);
+            assert!(
+                errs.is_empty(),
+                "{at}: optimized module fails validate: {errs:?}"
+            );
+            assert_eq!(trace(&opt), trace(&module), "{at}: outputs changed");
+            assert_eq!(
+                optimize(&mut opt),
+                0,
+                "{at}: a second run changed something"
+            );
+            checked += 1;
+        }
     }
-    eprintln!("checked {checked} of {} examples", files.len());
-    assert!(
-        checked >= MIN_CHECKED,
-        "only {checked} examples checked, expected at least {MIN_CHECKED}"
-    );
+    eprintln!("checked {checked} modules");
+    assert_eq!(skipped, EXPECTED_SKIPS, "corpus skip list changed");
+    assert!(checked > 0, "no example module was checked");
 }

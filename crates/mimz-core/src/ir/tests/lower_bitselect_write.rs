@@ -75,6 +75,7 @@ fn design_with_assign(
             },
             clock: "clk".into(),
             edge: Edge::Rise,
+            reset_by: None,
         }],
         mems: vec![],
         comb: BTreeMap::new(),

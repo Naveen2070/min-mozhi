@@ -45,7 +45,10 @@ language-feature work, now that Enum Variant Construction has shipped
       **✅ DONE 2026-09-04** (`crates/mimz-core/src/ir/mod.rs`) - bit-addressable
       `NetId`/`Bits` (LSB-first), 30 `CellKind` variants (arithmetic/logic/compare/
       mux/concat/slice/`Dff`/`Mem`/`BlackBox`/`Const`), `Module::signals` for
-      named-net lookup
+      named-net lookup. Contract written up as `spec/07-ir.md` (2026-10-02),
+      which also records a synthesis blocker found while writing it:
+      `elaborate` drops `async reset`'s async marker, so the IR models every
+      reset as synchronous (spec/07 section 3.6)
 - [x] AST → IR lowering (enums encoded, match → mux trees, regs → FF cells) -
       **✅ DONE 2026-09-04, extended through 2026-09-08** (`ir/lower.rs`) -
       consumes the promoted `elaborate::Design`; registers → `Dff`, memories →
@@ -142,15 +145,17 @@ build`/`mimz test` path. Exit criterion #2's "lower to IR, pass IR
 > constant select, a mux bit whose two data bits agree, and an inner mux on
 > the same select, by rewiring readers; `eliminate_dead_cells` then removes
 > the bypassed muxes. `tests/ir_opt_corpus.rs` runs all three passes to a
-> fixpoint over every example and extern fixture that lowers
-> `validate`-clean (222 of 226 as of 2026-09-29) and checks the result stays
+> fixpoint over every module of every example and extern fixture (each lowered
+> as its own top; 230 modules, none skipped, as of 2026-10-02) and checks the
+> result stays
 > `validate`-clean with identical outputs over 4 ticks; the passes cut the
 > corpus's muxes from 1064 to 709 (measured 2026-09-27 over 216 examples).
 > That meets exit criterion #2's "survive optimizer passes" clause for those
-> designs. The remaining skips are the four `alu.mimz` flavors (two modules,
-> no top named); since 2026-09-29 `ripple_adder.mimz` lowers and extern
-> designs (`tests/fixtures/extern/`) are `validate`-clean and in the corpus
-> too.
+> designs. The four `alu.mimz` flavors (two modules, no top named) were
+> skipped until 2026-10-02; the test now pins its exact skip list
+> (`EXPECTED_SKIPS`, empty). Since 2026-09-29 `ripple_adder.mimz` lowers and
+> extern designs (`tests/fixtures/extern/`) are `validate`-clean and in the
+> corpus too.
 >
 > Wiring (2026-10-01,
 > `docs/superpowers/specs/2026-10-01-ir-pipeline-cli-design.local.md`):
@@ -160,14 +165,32 @@ build`/`mimz test` path. Exit criterion #2's "lower to IR, pass IR
 > compiler error).
 >
 > Left for later (non-goals of that spec): `mimz build` and the synthesis
-> path; per-pass switches (`--passes fold,mux,dce`); `Display` for
-> `ir::validate::ValidationError` (the CLI prints `{:?}`); parsing or
+> path; per-pass switches (`--passes fold,mux,dce`); parsing or
 > round-tripping the printed IR; correct source spans in multi-file projects
-> (gaps.md).
+> (gaps.md). `Display` for `ir::validate::ValidationError` was added
+> 2026-10-02 (synthesis pre-prep Task 3).
 
 ### Synthesis path (pragmatic first)
 
-- [ ] IR → structural Verilog emitter (Yosys-friendly subset) **or** direct Yosys JSON netlist
+> Toolchain: OSS CAD Suite (`docs/BUILD.md` section 1). On Windows builds
+> the default `synth_ice40` crashes in ABC9 (upstream text-mode bug), so the
+> Windows flow uses `synth_ice40 -noabc`; Linux (CI) runs the default flow
+> and has no such bug (2026-10-02).
+
+Synthesis v1 is two phases, both from the same IR (Decision 2026-10-02,
+`docs/log/2026-10-02.md`). Before either: the pre-prep plan
+(`docs/superpowers/plans/2026-10-02-synthesis-pre-prep.local.md`).
+
+- [ ] **v1 phase 1:** IR → structural Verilog-2005 emitter (one operation
+      per line, explicit widths and signs), read by Yosys with
+      `read_verilog`; output also simulated in Icarus as an independent
+      check of the IR → Verilog step
+- [ ] **v1 phase 2:** IR → Yosys JSON netlist (`read_json`), a second
+      backend from the same IR (not a conversion of the Verilog); exact
+      bit-for-net mapping, no Verilog width/sign rules in between
+- Known limit for both: the IR's memory read is combinational, so Yosys
+  builds memories from flip-flops, not iCE40 block RAM. Block RAM needs a
+  registered-read form in the IR (later item).
 - [ ] Yosys + nextpnr flow scripted: `mimz build blink.mimz --target ice40`
 - [ ] Bitstream produced and verified **in CI/emulation** (no board owned yet - decision D8)
 - [ ] Hello-hardware demo on a real iCE40 board (iCEBreaker) - **when a board is acquired**
@@ -383,7 +406,8 @@ the open toolchain (LED demo on real hardware as soon as a board exists).
 
 ## Exit criteria
 
-1. IR documented in `docs/architecture.md` + a spec addendum.
+1. IR documented in `docs/architecture.md` + a spec addendum. **✅ Met
+   2026-10-02** - `spec/07-ir.md` (IR v1 contract).
 2. All examples lower to IR, pass IR validation, and survive optimizer passes
    with simulation-equivalent behavior (differential suite extended to IR level).
 3. Real-hardware demo reproducible from README instructions.

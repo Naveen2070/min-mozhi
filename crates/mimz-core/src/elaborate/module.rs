@@ -58,6 +58,7 @@ struct Elaboration<'a> {
     procs: Vec<Process>,
     clocks: Vec<String>,
     resets: Vec<String>,
+    async_reset: bool,
     /// Bit-indexed drives (`sum[i] = …`, from `repeat`), assembled into one
     /// whole-signal Concat driver after the loop.
     bit_drives: BTreeMap<String, BTreeMap<u32, Expr>>,
@@ -214,6 +215,7 @@ impl<'a> Elaboration<'a> {
             procs: Vec::new(),
             clocks: Vec::new(),
             resets: Vec::new(),
+            async_reset: false,
             bit_drives: BTreeMap::new(),
             flat: Flat::default(),
             asserts: Vec::new(),
@@ -495,7 +497,10 @@ impl<'a> Elaboration<'a> {
                 // path to modeling sub-cycle reset timing is the three-tier fidelity
                 // roadmap in docs/plan/phase-1.5-simulator.md (currently Tier 3:
                 // delegate timing-faithful runs to the Verilog/Icarus oracle).
-                ModuleItem::Reset { name: n, .. } => self.resets.push(n.name.clone()),
+                ModuleItem::Reset { name: n, is_async } => {
+                    self.resets.push(n.name.clone());
+                    self.async_reset |= *is_async;
+                }
                 ModuleItem::Wire { name, ty, init } => {
                     // Bundle wire → N scalar wires, each driven by the corresponding
                     // field of the bundle init expression (must be a BundleLit).
@@ -539,6 +544,7 @@ impl<'a> Elaboration<'a> {
                         reset,
                         clock: String::new(),
                         edge: Edge::Rise,
+                        reset_by: None,
                     });
                 }
                 ModuleItem::Mem {
@@ -762,6 +768,7 @@ impl<'a> Elaboration<'a> {
             mut procs,
             clocks,
             resets,
+            async_reset,
             bit_drives,
             flat,
             asserts,
@@ -774,6 +781,16 @@ impl<'a> Elaboration<'a> {
         let unknown_signals: HashSet<String> = flat.unknown.iter().cloned().collect();
         let extern_instances = flat.extern_instances;
         wires.extend(flat.wires);
+        // This module's own registers: first declared reset, async when any
+        // reset here is `async` (emit_verilog's per-module rule). Child
+        // registers in `flat.regs` already carry their own module's reset.
+        let own_reset = resets.first().map(|n| RegReset {
+            signal: n.clone(),
+            is_async: async_reset,
+        });
+        for r in &mut regs {
+            r.reset_by = own_reset.clone();
+        }
         regs.extend(flat.regs);
         // Merge instance drivers, erroring on a name collision instead of silently
         // overwriting (a parent signal named like a flattened `inst_port` wire).

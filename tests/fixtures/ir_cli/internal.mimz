@@ -1,7 +1,8 @@
-// `mimz ir` CLI fixture: the constant-`if` fold's known limit (gaps.md,
-// "limits left by the 2026-09-29 lowering fixes") makes ir::lower read the
-// phantom `s[-1]` under `!` and panic on a broken invariant. Replace this
-// fixture with another Internal reproducer once that limit is fixed.
+// `mimz ir` CLI fixture: an internal compiler error. The checker accepts a
+// LIVE read of instance `s[-1]` at `i == 0` (the condition does not fold), so
+// ir::lower finds no driver for `s__-1_y` and panics on a broken invariant
+// (gaps.md, "the checker accepts an out-of-range instance-array index").
+// Replace this fixture with another Internal reproducer once that is fixed.
 module Pass {
   in  x: bit
   out y: bit
@@ -13,6 +14,6 @@ module Top {
   out o: bits[4]
   repeat i: 0..4 {
     let s[i] = Pass() { x: a[i] }
-    o[i] = !(if i == 0 { 0 } else { s[i - 1].y })
+    o[i] = if a[3] { 0 } else { s[i - 1].y }
   }
 }

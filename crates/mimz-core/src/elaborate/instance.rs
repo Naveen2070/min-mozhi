@@ -316,6 +316,15 @@ pub(super) fn flatten_instance(
             reset: r.reset.clone(),
             clock: String::new(),
             edge: r.edge,
+            // The checker types a reset port `Ty::Reset`, so its connection is
+            // always a parent reset, which `clock_map` holds.
+            reset_by: r.reset_by.as_ref().map(|rr| RegReset {
+                signal: clock_map
+                    .get(&rr.signal)
+                    .cloned()
+                    .unwrap_or_else(|| rr.signal.clone()),
+                is_async: rr.is_async,
+            }),
         });
     }
     // Child memories (clock filled by the parent's clock-binding pass).
