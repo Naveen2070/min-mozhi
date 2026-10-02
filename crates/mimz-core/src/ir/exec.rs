@@ -297,6 +297,7 @@ impl<'a> Executor<'a> {
                 depth,
                 init,
                 read_ports,
+                ..
             } => {
                 for (raddr, rdata) in read_ports {
                     let addr = self.get_bits(raddr).bits_small_or_zero();

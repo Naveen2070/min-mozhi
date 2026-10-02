@@ -191,6 +191,18 @@ Synthesis v1 is two phases, both from the same IR (Decision 2026-10-02,
 - Known limit for both: the IR's memory read is combinational, so Yosys
   builds memories from flip-flops, not iCE40 block RAM. Block RAM needs a
   registered-read form in the IR (later item).
+- Design: `docs/superpowers/specs/2026-10-02-synthesis-v1-design.local.md`
+  (`mimz build --board icebreaker`, PCF + board presets, toolchain from
+  PATH or a suite root, verified by IR-Verilog and post-synthesis
+  simulation against `ir::exec`).
+- **Non-goals for v1:** block RAM inference (needs a registered-read form
+  in the IR); timing constraints beyond `--freq`; FPGA families other than
+  iCE40; flashing a board (`iceprog`, for when a board arrives); moving
+  `mimz compile` onto the IR; source locations in multi-file projects;
+  fixing BUG-77/78/79. **Known difference (BUG-79):** in hierarchical
+  designs with more than one reset, `mimz sim` clears every register on
+  any reset, while the IR and the synthesized hardware reset each register
+  by its own module's reset.
 - [ ] Yosys + nextpnr flow scripted: `mimz build blink.mimz --target ice40`
 - [ ] Bitstream produced and verified **in CI/emulation** (no board owned yet - decision D8)
 - [ ] Hello-hardware demo on a real iCE40 board (iCEBreaker) - **when a board is acquired**

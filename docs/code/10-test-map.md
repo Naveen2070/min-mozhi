@@ -22,8 +22,15 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1583 tests** as of 2026-10-02 (`cargo test --workspace`; the count is
+**1589 tests** as of 2026-10-02 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
++6 from completing the IR data a backend needs (synthesis v1 phase 1 Task 2):
+`lower_blackbox.rs`'s `an_extern_clock_input_is_a_blackbox_pin`,
+`an_extern_instance_carries_its_parameters` and
+`an_extern_alias_carries_its_verilog_name`; `lower_mem.rs`'s
+`a_falling_edge_memory_write_keeps_its_edge`; `parse_line.rs`'s
+`a_blackbox_with_a_verilog_name_and_params_round_trips` and
+`a_falling_edge_memory_round_trips`. Previously, as of 2026-10-02 at 1583:
 +4 from signed pins in the IR line format (synthesis pre-prep Task 4):
 `ir/tests/parse_line.rs`'s `a_signed_name_form_pin_round_trips`,
 `a_signed_bracket_form_pin_round_trips`, `an_unknown_pin_suffix_is_an_error`

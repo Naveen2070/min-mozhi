@@ -175,6 +175,7 @@ fn lowers_a_read_write_memory_to_one_mem_cell() {
         depth,
         init,
         read_ports,
+        ..
     } = &mem.kind
     else {
         unreachable!()
@@ -553,4 +554,16 @@ fn lowers_a_clockless_memory_to_a_rom_with_wen_tied_low() {
         !mem.pins.contains_key("clock"),
         "a ROM has no clock signal at all, so no clock pin is invented"
     );
+}
+
+#[test]
+fn a_falling_edge_memory_write_keeps_its_edge() {
+    let m = super::lower_ok(
+        "module R {\n  clock clk\n  in we: bit\n  in wa: bits[2]\n  in wd: bits[8]\n  in ra: bits[2]\n  out rd: bits[8]\n  mem m: bits[8][4] = 0\n  on fall(clk) {\n    if we {\n      m[wa] <- wd\n    }\n  }\n  rd = m[ra]\n}\n",
+    );
+    let edge = m.cells.iter().find_map(|c| match &c.kind {
+        crate::ir::CellKind::Mem { edge, .. } => Some(*edge),
+        _ => None,
+    });
+    assert_eq!(edge, Some(crate::ast::Edge::Fall));
 }

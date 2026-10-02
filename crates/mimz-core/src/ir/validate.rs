@@ -254,7 +254,7 @@ pub fn validate(module: &Module) -> Vec<ValidationError> {
         // A declared black box's pins are the extern's own port names, so
         // its declared directions (below) decide what it drives, not the
         // `out`/`q`/`rdata` names.
-        let declared_blackbox = matches!(&cell.kind, CellKind::BlackBox { module_name }
+        let declared_blackbox = matches!(&cell.kind, CellKind::BlackBox { module_name, .. }
             if module.extern_decls.contains_key(module_name));
         for (pin_name, bits) in &cell.pins {
             let is_output = !declared_blackbox && matches!(*pin_name, "out" | "q" | "rdata");
@@ -279,7 +279,7 @@ pub fn validate(module: &Module) -> Vec<ValidationError> {
         // A declared extern output drives its pin's nets. Without a declared
         // shape (hand-parsed IR, see `Module::extern_decls`) the direction is
         // unknown, so nothing is added.
-        if let CellKind::BlackBox { module_name } = &cell.kind
+        if let CellKind::BlackBox { module_name, .. } = &cell.kind
             && let Some(decl) = module.extern_decls.get(module_name)
         {
             for (port, _, dir) in decl {
@@ -379,7 +379,7 @@ pub fn validate(module: &Module) -> Vec<ValidationError> {
 
     // --- Check 5: black-box port shape ---------------------------------
     for (i, cell) in module.cells.iter().enumerate() {
-        let CellKind::BlackBox { module_name } = &cell.kind else {
+        let CellKind::BlackBox { module_name, .. } = &cell.kind else {
             continue;
         };
         // v1 text-format gap (see `Module::extern_decls` doc): no entry

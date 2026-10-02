@@ -2606,6 +2606,8 @@ pub fn lower(design: &Design) -> Module {
         module.cells.push(Cell {
             kind: CellKind::BlackBox {
                 module_name: ext.module_name.clone(),
+                verilog_name: ext.verilog_name.clone(),
+                params: ext.params.clone(),
             },
             pins,
             span: ext.span,
@@ -2812,6 +2814,7 @@ pub fn lower(design: &Design) -> Module {
                 depth: mem.depth,
                 init: mem.init.clone(),
                 read_ports,
+                edge: mem.edge,
             },
             pins,
             span: crate::span::Span::default(),

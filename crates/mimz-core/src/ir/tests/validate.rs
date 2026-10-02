@@ -164,6 +164,8 @@ fn rejects_a_blackbox_port_shape_mismatch() {
     module.cells.push(Cell {
         kind: CellKind::BlackBox {
             module_name: "Pll".to_string(),
+            verilog_name: "Pll".to_string(),
+            params: vec![],
         },
         pins: [("clk_in", clk), ("unexpected_pin", Bits::unsigned(vec![]))]
             .into_iter()
@@ -209,6 +211,8 @@ fn accepts_a_blackbox_cell_with_no_declared_shape_on_record() {
     module.cells.push(Cell {
         kind: CellKind::BlackBox {
             module_name: "Pll".to_string(),
+            verilog_name: "Pll".to_string(),
+            params: vec![],
         },
         pins: [("clk_in", clk)].into_iter().collect(),
         span: crate::span::Span::default(),
@@ -442,6 +446,8 @@ fn extern_out_module(declared: bool) -> (crate::ir::Module, Bits) {
     module.cells.push(Cell {
         kind: CellKind::BlackBox {
             module_name: "Pll".to_string(),
+            verilog_name: "Pll".to_string(),
+            params: vec![],
         },
         pins: [("clk_out", clk_out.clone())].into_iter().collect(),
         span: Span::default(),
@@ -510,6 +516,8 @@ fn named_pin_module(pin: &'static str, dir: crate::ast::Dir) -> (crate::ir::Modu
     module.cells.push(Cell {
         kind: CellKind::BlackBox {
             module_name: "Reg".to_string(),
+            verilog_name: "Reg".to_string(),
+            params: vec![],
         },
         pins: [(pin, net.clone())].into_iter().collect(),
         span: Span::default(),
