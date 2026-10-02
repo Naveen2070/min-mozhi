@@ -18,10 +18,8 @@
 //!   `value::binary::shr` never sign-extends — this means an arithmetic
 //!   (sign-extending) right shift is not yet distinguished from a logical
 //!   one; see `docs/audit/gaps.md` GAP-1's `<<`/`>>` sub-gap.
-//! - **The arithmetic family's `signed` flag does not round-trip through IR
-//!   text** — neither printer emits it and `parse_line` always builds an
-//!   unsigned pin; see `docs/audit/gaps.md`'s "arithmetic family's `signed`
-//!   flag does not round-trip through IR text" sub-gap.
+//! - **Signed pins round-trip through the line format** (`a=x[0:8]s`); the
+//!   s-expression dump stays print-only.
 //! - **One global clock.** [`Executor::tick`] advances EVERY `Dff`/`Mem`
 //!   regardless of which clock net it references (and regardless of its
 //!   `edge`); the IR has no module-level clock list, and a genuinely
@@ -73,7 +71,7 @@ impl<'a> Executor<'a> {
         };
         for (i, cell) in module.cells.iter().enumerate() {
             match &cell.kind {
-                CellKind::Dff { .. } => {
+                CellKind::Dff { .. } | CellKind::Adff { .. } => {
                     // Power-on Q is 0, and it is published to the netlist
                     // right away so a read before the first `tick` sees a
                     // register's initial value rather than X.
@@ -142,6 +140,17 @@ impl<'a> Executor<'a> {
         for (i, cell) in module.cells.iter().enumerate() {
             match &cell.kind {
                 CellKind::Dff { .. } => next_dff.push((i, self.get_bits(&cell.pins["d"]))),
+                // Cycle-based, like the AST kernel: an async reset is sampled
+                // at the edge, which is observationally identical at every
+                // tick (`elaborate::module`'s Reset comment).
+                CellKind::Adff { value, .. } => {
+                    let next = if self.get_bits(&cell.pins["arst"]).lsb() == 1 {
+                        crate::value::from_const_at_width(value, value.width, value.signed)
+                    } else {
+                        self.get_bits(&cell.pins["d"])
+                    };
+                    next_dff.push((i, next));
+                }
                 CellKind::Mem { depth, .. } => {
                     // A ROM's `wen` is a constant 0 (see `lower`), so this
                     // needs no separate "has a clock pin?" test.
@@ -192,7 +201,7 @@ impl<'a> Executor<'a> {
             // `values`, which `get_bits` already reports as `Val::unknown`,
             // matching `mimz-sim`'s `Warn`-mode extern-output semantics with
             // no special case here.
-            CellKind::Dff { .. } | CellKind::BlackBox { .. } => {}
+            CellKind::Dff { .. } | CellKind::Adff { .. } | CellKind::BlackBox { .. } => {}
 
             // ARITHMETIC reads its operand pins' own `Bits::signed`: a
             // lossless `+`/`-`/`*` grows past its operands' width, and

@@ -22,8 +22,9 @@ pub enum Stage {
 /// Root-cause class of a [`Failure`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FailureKind {
-    /// The IR cannot lower this construct yet (`unimplemented!`, or the
-    /// `S0227` loop budget).
+    /// The IR cannot lower this construct yet: declared with the
+    /// crate-private `limitation` (an unsupported construct, or the `S0227`
+    /// loop budget).
     Limitation,
     /// A broken invariant: a compiler bug.
     Internal,
@@ -75,6 +76,17 @@ thread_local! {
     /// `Some(want_backtrace)` while this thread is inside `catch`.
     static ARMED: Cell<Option<bool>> = const { Cell::new(None) };
     static CAPTURED: RefCell<Option<Captured>> = const { RefCell::new(None) };
+    /// Set by [`limitation`] just before it panics; read and cleared by `catch`.
+    static LIMITATION: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Reports a construct the IR cannot handle yet. Panics with
+/// `not implemented: <msg>` (readable under any panic hook) and marks the
+/// panic so [`catch`] classifies it as [`FailureKind::Limitation`].
+#[track_caller]
+pub(crate) fn limitation(msg: String) -> ! {
+    LIMITATION.with(|l| l.set(true));
+    panic!("not implemented: {msg}")
 }
 
 static HOOK: Once = Once::new();
@@ -134,7 +146,9 @@ pub fn catch<T>(stage: Stage, want_backtrace: bool, f: impl FnOnce() -> T) -> Re
     let depth = SPANS.with(|s| s.borrow().len());
     let outer = ARMED.with(|a| a.replace(Some(want_backtrace)));
     CAPTURED.with(|c| c.borrow_mut().take());
+    LIMITATION.with(|l| l.set(false));
     let result = panic::catch_unwind(AssertUnwindSafe(f));
+    let declared = LIMITATION.with(|l| l.replace(false));
     ARMED.with(|a| a.set(outer));
     // Unwinding already popped the guards; truncating guards against a leak.
     SPANS.with(|s| s.borrow_mut().truncate(depth));
@@ -150,7 +164,7 @@ pub fn catch<T>(stage: Stage, want_backtrace: bool, f: impl FnOnce() -> T) -> Re
         .unwrap_or_else(|| "<non-string panic payload>".to_string());
     Err(Failure {
         stage,
-        kind: classify(stage, &message),
+        kind: classify(stage, declared),
         message,
         location: captured.location,
         span: captured.span,
@@ -159,12 +173,8 @@ pub fn catch<T>(stage: Stage, want_backtrace: bool, f: impl FnOnce() -> T) -> Re
     })
 }
 
-fn classify(stage: Stage, message: &str) -> FailureKind {
-    // ponytail: classified by message text; a typed error from `lower` would
-    // replace this if lowering ever returns `Result`.
-    if stage == Stage::Lower
-        && (message.starts_with("not implemented") || message.contains("(S0227)"))
-    {
+fn classify(stage: Stage, declared_limitation: bool) -> FailureKind {
+    if stage == Stage::Lower && declared_limitation {
         FailureKind::Limitation
     } else {
         FailureKind::Internal

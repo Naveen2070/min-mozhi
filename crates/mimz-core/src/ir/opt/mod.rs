@@ -90,7 +90,7 @@ pub(crate) fn for_each_read_net_mut(module: &mut Module, mut f: impl FnMut(&mut 
             }
         }
         match &mut cell.kind {
-            CellKind::Dff { clock, .. } => f(clock),
+            CellKind::Dff { clock, .. } | CellKind::Adff { clock, .. } => f(clock),
             CellKind::Mem { read_ports, .. } => {
                 for (raddr, _) in read_ports {
                     raddr.nets.iter_mut().for_each(&mut f);

@@ -485,8 +485,10 @@ for the session).
   (stage, `Limitation`/`Internal`, message, panic site, innermost span,
   backtrace with `-d`). One chaining panic hook per process; a thread-local
   span stack fed by guards in `lower_expr`/`lower_expr_sized`.
-- `Limitation` = `unimplemented!` or the `S0227` loop budget; everything
-  else, and every optimizer panic, is `Internal`. `--panic` re-raises an
+- `Limitation` = a panic raised through `ir::failure::limitation` (an
+  unsupported construct, or the `S0227` loop budget), which sets a
+  thread-local flag `catch` reads; everything else, a bare `unimplemented!`
+  included, and every optimizer panic, is `Internal`. `--panic` re-raises an
   `Internal` failure (exit 101).
 - The span is underlined only for a single-file project: `Span` has no file
   index (gaps.md).

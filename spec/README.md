@@ -23,6 +23,7 @@ simulation model precisely. When the two disagree, the specification wins.
 | 4   | [Grammar Engine](04-grammar-engine.md)           | How the parser accepts natural Tamil (SOV) word order from the same grammar and AST                     |
 | 5   | [Simulator](05-simulator.md)                     | The event-driven model behind `mimz sim` and `mimz test`, validated against Verilog                     |
 | 6   | [Versioning & Editions](06-editions.md)          | The two version axes - compiler version and language edition - and how each advances                    |
+| 7   | [Intermediate Representation](07-ir.md)          | The typed netlist between checking and hardware generation - cells, widths, validation, optimizer       |
 
 Each document carries its own version and changelog. The keyword words themselves
 live in [`../lang/keywords.toml`](../lang/keywords.toml); the compiler implements what is

@@ -118,6 +118,8 @@ fn max_bracket_net_id(text: &str) -> Option<u32> {
                 continue;
             };
             let Some(inner) = bits_spec
+                .strip_suffix('s')
+                .unwrap_or(bits_spec)
                 .strip_prefix('{')
                 .and_then(|s| s.strip_suffix('}'))
             else {
@@ -145,7 +147,24 @@ fn parse_name_width(spec: &str) -> Result<(String, u32), String> {
     Ok((name.to_string(), width))
 }
 
+/// One pin value: `name[lo:hi]` or `{ids}`, with a trailing `s` when the pin
+/// is signed (see `print_line::format_bits`). Signedness is per pin, so only
+/// the returned copy is marked; `named_bits` keeps the plain nets.
 fn resolve_bits_spec(
+    module: &mut Module,
+    named_bits: &mut HashMap<String, Bits>,
+    spec: &str,
+) -> Result<Bits, String> {
+    let (spec, signed) = match spec.strip_suffix('s') {
+        Some(rest) if rest.ends_with(']') || rest.ends_with('}') => (rest, true),
+        _ => (spec, false),
+    };
+    let mut bits = resolve_nets(module, named_bits, spec)?;
+    bits.signed = signed;
+    Ok(bits)
+}
+
+fn resolve_nets(
     module: &mut Module,
     named_bits: &mut HashMap<String, Bits>,
     spec: &str,
@@ -207,6 +226,7 @@ fn leak_pin_name(name: &str) -> &'static str {
         "sel" => "sel",
         "d" => "d",
         "q" => "q",
+        "arst" => "arst",
         "clock" => "clock",
         "raddr" => "raddr",
         "waddr" => "waddr",
@@ -298,6 +318,37 @@ fn parse_cell_kind(
             // `cell_op_name` never reads `clock` back.
             let clock = module.alloc_net(None);
             CellKind::Dff { clock, edge }
+        }
+        other if other.starts_with("$adff[") => {
+            let inner = bracket_arg(other, "$adff[")?;
+            let (edge, value) = inner
+                .split_once(':')
+                .ok_or_else(|| format!("expected `Edge:width'dvalue` inside `{other}`"))?;
+            let edge = match edge {
+                "Rise" => crate::ast::Edge::Rise,
+                "Fall" => crate::ast::Edge::Fall,
+                e => return Err(format!("unknown clock edge `{e}` in `{other}`")),
+            };
+            let (width, dec) = value
+                .split_once("'d")
+                .ok_or_else(|| format!("malformed reset value in `{other}`"))?;
+            let width: u32 = width
+                .parse()
+                .map_err(|_| format!("bad reset width in `{other}`"))?;
+            let value: u128 = dec
+                .parse()
+                .map_err(|_| format!("bad reset value in `{other}`"))?;
+            // Same fabricated clock net as `$dff[...]`: the text form never prints it.
+            let clock = module.alloc_net(None);
+            CellKind::Adff {
+                clock,
+                edge,
+                value: crate::checker::consteval::ConstVal {
+                    bits: crate::bits::Bits::Small(value),
+                    width,
+                    signed: false,
+                },
+            }
         }
         other if other.starts_with("$mem[") => {
             let inner = bracket_arg(other, "$mem[")?;

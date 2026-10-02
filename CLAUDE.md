@@ -77,7 +77,7 @@ min-mozhi/
 │   ├── keywords.toml            # Trilingual keyword table
 │   ├── messages.toml            # Localized error templates
 │   └── case_suffixes.toml       # Tamil case suffixes
-├── spec/                        # Language specification (7 files)
+├── spec/                        # Language specification (8 files)
 ├── site/                        # Astro documentation website
 ├── tools/test-summary/          # Dev helper (cargo test wrapper)
 ├── .github/workflows/           # CI/CD (ci, deploy-site, release)

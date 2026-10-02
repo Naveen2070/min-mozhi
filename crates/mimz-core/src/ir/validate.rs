@@ -48,6 +48,58 @@ pub enum ValidationError {
     },
 }
 
+/// One line per error, naming the cell index, net or port it is about.
+impl std::fmt::Display for ValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let list = |xs: &mut dyn Iterator<Item = String>| xs.collect::<Vec<_>>().join(", ");
+        match self {
+            Self::MultipleDrivers { net, cell_indices } => write!(
+                f,
+                "net {} has {} drivers (cells {})",
+                net.0,
+                cell_indices.len(),
+                list(&mut cell_indices.iter().map(ToString::to_string))
+            ),
+            Self::UndrivenNet { net } => write!(f, "net {} is read but nothing drives it", net.0),
+            Self::WidthMismatch {
+                cell_index,
+                pin,
+                expected,
+                found,
+            } => write!(
+                f,
+                "cell {cell_index}: pin `{pin}` is {found} bits, expected {expected}"
+            ),
+            Self::CombinationalCycle { nets } => write!(
+                f,
+                "combinational cycle through nets {}",
+                list(&mut nets.iter().map(|n| n.0.to_string()))
+            ),
+            Self::BlackBoxPortMismatch { cell_index, reason } => write!(
+                f,
+                "cell {cell_index}: black box ports do not match the extern declaration: {reason}"
+            ),
+            Self::PortWidthMismatch {
+                port,
+                declared,
+                found,
+            } => write!(
+                f,
+                "output port `{port}` is {found} bits, declared {declared}"
+            ),
+            Self::ShiftGrowthTooWide {
+                cell_index,
+                lhs_width,
+                amount_width,
+            } => write!(
+                f,
+                "cell {cell_index}: left shift of a {lhs_width}-bit value by a \
+                 {amount_width}-bit amount can grow past the width limit"
+            ),
+        }
+    }
+}
+
 /// Input pin names per `CellKind` and their required relationship to
 /// output width — kept as one match so every cell kind's contract lives
 /// in exactly one place (this table, mirrored by `exec.rs`'s evaluator).
@@ -91,6 +143,13 @@ fn expected_widths(
         // `d` -> `q` was already checked (as `q` against `d`); naming `q` as
         // the expectation keeps the error pointing at the declared side.
         CellKind::Dff { .. } => Ok(vec![("q", pins["d"].width())]),
+        // `d` must be as wide as the reset value, and `q` as `d`. Not the
+        // `Err` path: the caller reports that as `ShiftGrowthTooWide`.
+        CellKind::Adff { value, .. } => Ok(vec![
+            ("d", value.width),
+            ("q", pins["d"].width()),
+            ("arst", 1),
+        ]),
         CellKind::Add | CellKind::Sub => {
             Ok(vec![("out", pins["a"].width().max(pins["b"].width()) + 1)])
         }
@@ -416,7 +475,7 @@ fn find_combinational_cycle(module: &Module) -> Option<Vec<NetId>> {
             }
             continue; // write side handled below, same as Dff
         }
-        if matches!(cell.kind, CellKind::Dff { .. }) {
+        if matches!(cell.kind, CellKind::Dff { .. } | CellKind::Adff { .. }) {
             continue; // a register breaks the combinational path by construction
         }
         let inputs: Vec<NetId> = cell

@@ -110,18 +110,21 @@ is the tracked source of truth for each item.
 - ✅ Hardware emulation `sim{}` blocks + `--emulate`/`--step` (2026-07-09)
 - Still open: channels tier (a), wire type inference, `pipeline(stages=N)`, `prove` blocks, G5 `secret`/`system_fault`
 
-**IR/synthesis track - not started.** Backend strategy: Verilog-2005 + Yosys
+**IR/synthesis track - IR + optimizer ✅, synthesis path next.** Backend strategy: Verilog-2005 + Yosys
 is the standing plan, not a placeholder - own logic synthesis is
 research-grade (Yosys/nextpnr represent a decade-plus of community
 engineering), so this track rides on that ecosystem for technology mapping
 rather than competing with it. The "internals study" item below feeds that
 integration; it is not an alternative path toward an in-house synthesizer.
 
-- Min-Mozhi IR - own netlist-like intermediate format (typed cells/nets,
+- ✅ Min-Mozhi IR - own netlist-like intermediate format (typed cells/nets,
   clock domains preserved - feeds the Yosys/nextpnr flow below, not a
-  replacement for it)
-- IR emitter from AST
-- IR → Yosys JSON netlist or a Yosys-friendly structural Verilog subset
+  replacement for it); contract in `spec/07-ir.md` (2026-10-02)
+- ✅ IR lowering from the elaborated design, validation, first optimizer
+  passes, `mimz ir` (2026-09-04 → 2026-10-01)
+- Synthesis v1, two phases (Decision 2026-10-02): (1) IR → structural
+  Verilog-2005 → Yosys; (2) IR → Yosys JSON netlist, a second backend from
+  the same IR
 - Yosys + nextpnr flow scripted end-to-end (`mimz build blink.mimz --target ice40`)
 - Study Yosys internals (techmapping, ABC interaction) to inform the above
 
