@@ -151,3 +151,32 @@ fn signed_arithmetic_parsed_from_text_executes_signed() {
     ex.tick();
     assert_eq!(ex.get_output("o").bits, crate::bits::Bits::Small(0x1FD));
 }
+
+#[test]
+fn a_blackbox_with_a_verilog_name_and_params_round_trips() {
+    let text = "module m\n\ncell $blackbox[Pll=PLL_HARD_IP_v2(MULT=4,DIV=-1)] :0 clk_in={0}\n";
+    let module = parse_line::parse(text).expect("parses");
+    assert_eq!(
+        module.cells[0].kind,
+        crate::ir::CellKind::BlackBox {
+            module_name: "Pll".into(),
+            verilog_name: "PLL_HARD_IP_v2".into(),
+            params: vec![("MULT".into(), 4), ("DIV".into(), -1)],
+        }
+    );
+    assert_eq!(print_line::print(&module), text);
+}
+
+#[test]
+fn a_falling_edge_memory_round_trips() {
+    let text = "module m\n\ncell $mem[Fall:4] :0 raddr0={0,1} rdata0={2,3,4,5,6,7,8,9}\n";
+    let module = parse_line::parse(text).expect("parses");
+    assert!(matches!(
+        module.cells[0].kind,
+        crate::ir::CellKind::Mem {
+            edge: crate::ast::Edge::Fall,
+            ..
+        }
+    ));
+    assert_eq!(print_line::print(&module), text);
+}

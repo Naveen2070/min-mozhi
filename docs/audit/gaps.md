@@ -1885,6 +1885,33 @@ the new kind (spec/07-ir.md v0.2). Tests in `ir/tests/lower_regs.rs`:
 simulator found BUG-79 (`mimz sim` clears every register on any reset), which
 is open and separate.
 
+### Sub-gap (2026-10-02, RESOLVED 2026-10-02 — synthesis v1 design): extern clock/reset inputs, extern parameters, extern Verilog name and memory write edge did not reach the IR
+
+**What.** `elaborate` listed only an extern module's data ports, so its
+`clock`/`reset` inputs never became `BlackBox` pins (`tests/golden/ir/pll.ir`
+had no `clk_in`). The extern's folded parameters and its real Verilog name
+(`extern module Pll = "PLL_HARD_IP_v2"`) were dropped, and `CellKind::Mem` had
+no write edge, so a memory written in `on fall(clk)` would be emitted as
+posedge.
+
+**Why it matters.** A backend that emits Verilog from the IR for synthesis
+would produce an unclocked PLL, the wrong module name, default parameters and
+the wrong memory edge.
+
+**Resolution (2026-10-02).** `ExternInstance` gains `verilog_name` and
+`params` and lists each extern `clock`/`reset` as an input port wired to the
+parent signal (same rule as a real child's clock/reset). `CellKind::BlackBox`
+gains `verilog_name` and `params`; `CellKind::Mem` gains `edge`. Line format
+`$blackbox[Pll=Y(MULT=4)]` and `$mem[Fall:16]` (spec/07-ir.md v0.4). Tests:
+`ir/tests/lower_blackbox.rs`'s `an_extern_clock_input_is_a_blackbox_pin`,
+`an_extern_instance_carries_its_parameters` and
+`an_extern_alias_carries_its_verilog_name`; `ir/tests/lower_mem.rs`'s
+`a_falling_edge_memory_write_keeps_its_edge`; `ir/tests/parse_line.rs`'s
+`a_blackbox_with_a_verilog_name_and_params_round_trips` and
+`a_falling_edge_memory_round_trips`. Golden `tests/golden/ir/pll.ir` updated.
+The extern clock/reset pin rule exposes BUG-80 for an unconnected extern
+clock (now an internal error in `mimz ir`, previously ignored).
+
 ---
 
 ## GAP-2 (MEDIUM) - Simulator is 2-state with a whole-value unknown flag; no X/Z, no tri-state

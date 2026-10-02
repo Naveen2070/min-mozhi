@@ -115,8 +115,8 @@ simulator (`crates/mimz-sim/src/sim/`, `mimz sim`/`mimz test`).
 
 The IR is built (`mimz_core::ir`), and so is its first optimizer pipeline:
 `ir::opt::optimize` runs constant folding, mux simplification and dead-cell
-elimination to a fixpoint. `mimz ir` (`src/commands/ir.rs`) is the CLI
-caller: `lower` -> `validate` -> `optimize` -> `validate` -> print, with
+elimination to a fixpoint. `mimz ir` (`src/commands/ir.rs`, pipeline in
+`src/commands/ir_pipeline.rs`) is the CLI caller: `lower` -> `validate` -> `optimize` -> `validate` -> print, with
 `ir::failure` turning a lowering/optimizer panic into a classified report.
 The synthesis path and native backend remain planned. Synthesis v1 emits
 from the IR in two phases (Decision 2026-10-02): structural Verilog-2005 for

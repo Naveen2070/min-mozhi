@@ -97,8 +97,25 @@ pub(super) fn cell_op_name(kind: &CellKind) -> String {
             value.width,
             crate::bits::to_decimal_string(&value.bits)
         ),
-        CellKind::Mem { depth, .. } => format!("$mem[{depth}]"),
-        CellKind::BlackBox { module_name } => format!("$blackbox[{module_name}]"),
+        CellKind::Mem { depth, edge, .. } => match edge {
+            crate::ast::Edge::Rise => format!("$mem[{depth}]"),
+            crate::ast::Edge::Fall => format!("$mem[Fall:{depth}]"),
+        },
+        CellKind::BlackBox {
+            module_name,
+            verilog_name,
+            params,
+        } => {
+            let mut s = format!("$blackbox[{module_name}");
+            if verilog_name != module_name {
+                s += &format!("={verilog_name}");
+            }
+            if !params.is_empty() {
+                let ps: Vec<String> = params.iter().map(|(n, v)| format!("{n}={v}")).collect();
+                s += &format!("({})", ps.join(","));
+            }
+            s + "]"
+        }
         CellKind::Const { value } => format!(
             "$const[{}'d{}]",
             value.width,

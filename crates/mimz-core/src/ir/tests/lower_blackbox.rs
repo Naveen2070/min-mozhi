@@ -48,6 +48,8 @@ pub(super) fn pll_design() -> Design {
         unknown_signals: std::iter::once("u_clk_out".to_string()).collect(),
         extern_instances: vec![ExternInstance {
             module_name: "Pll".to_string(),
+            verilog_name: "Pll".into(),
+            params: vec![],
             ports: vec![
                 (
                     "clk_in".to_string(),
@@ -85,7 +87,7 @@ fn lowers_extern_instance_to_one_blackbox_cell_with_matching_pins() {
         .collect();
     assert_eq!(blackboxes.len(), 1, "expected exactly one BlackBox cell");
     let bb = blackboxes[0];
-    let CellKind::BlackBox { module_name } = &bb.kind else {
+    let CellKind::BlackBox { module_name, .. } = &bb.kind else {
         unreachable!()
     };
     assert_eq!(module_name, "Pll");
@@ -136,5 +138,56 @@ fn a_lowered_extern_instance_survives_the_optimizer() {
             .iter()
             .any(|c| matches!(c.kind, CellKind::BlackBox { .. })),
         "black boxes are never removed"
+    );
+}
+
+const PLL_SRC: &str = "extern module Pll(MULT: int = 2) {\n  doc: \"x\"\n  clock clk_in\n  out clk_out: bit\n  out locked: bit\n}\n\nmodule ExternDemo {\n  clock sysclk\n  out fast_clk: bit\n  out pll_ok: bit\n  let u = Pll(MULT: 4) { clk_in: sysclk }\n  fast_clk = u.clk_out\n  pll_ok = u.locked\n}\n";
+
+fn the_blackbox(m: &crate::ir::Module) -> &crate::ir::Cell {
+    m.cells
+        .iter()
+        .find(|c| matches!(c.kind, CellKind::BlackBox { .. }))
+        .expect("one BlackBox")
+}
+
+#[test]
+fn an_extern_clock_input_is_a_blackbox_pin() {
+    let m = super::lower_ok(PLL_SRC);
+    let bb = the_blackbox(&m);
+    let sysclk = &m.ports.iter().find(|(n, ..)| n == "sysclk").unwrap().1;
+    assert_eq!(bb.pins.get("clk_in"), Some(sysclk));
+    assert!(crate::ir::validate::validate(&m).is_empty());
+}
+
+#[test]
+fn an_extern_instance_carries_its_parameters() {
+    let m = super::lower_ok(PLL_SRC);
+    let CellKind::BlackBox {
+        params,
+        verilog_name,
+        ..
+    } = &the_blackbox(&m).kind
+    else {
+        unreachable!()
+    };
+    assert_eq!(params, &vec![("MULT".to_string(), 4)]);
+    assert_eq!(verilog_name, "Pll");
+}
+
+#[test]
+fn an_extern_alias_carries_its_verilog_name() {
+    let src = "extern module Pll = \"PLL_HARD_IP_v2\" {\n  clock clk_in\n  out clk_out: bit\n}\n\nmodule AliasDemo {\n  clock sysclk\n  out fast_clk: bit\n  let u = Pll() { clk_in: sysclk }\n  fast_clk = u.clk_out\n}\n";
+    let m = super::lower_ok(src);
+    let CellKind::BlackBox {
+        module_name,
+        verilog_name,
+        ..
+    } = &the_blackbox(&m).kind
+    else {
+        unreachable!()
+    };
+    assert_eq!(
+        (module_name.as_str(), verilog_name.as_str()),
+        ("Pll", "PLL_HARD_IP_v2")
     );
 }
