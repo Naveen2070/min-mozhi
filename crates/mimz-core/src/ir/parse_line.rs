@@ -6,6 +6,7 @@
 
 use super::{Bits, Cell, CellKind, Module, NetId, NetInfo};
 use crate::ast::Dir;
+use crate::ir::Edge;
 use std::collections::{BTreeMap, HashMap};
 
 pub fn parse(text: &str) -> Result<Module, String> {
@@ -352,7 +353,12 @@ fn parse_cell_kind(
         }
         other if other.starts_with("$mem[") => {
             let inner = bracket_arg(other, "$mem[")?;
-            let depth: u128 = inner
+            let (edge, depth_str) = match inner.split_once(':') {
+                Some(("Fall", d)) => (Edge::Fall, d),
+                Some((e, _)) => return Err(format!("unknown clock edge `{e}` in `{other}`")),
+                None => (Edge::Rise, inner),
+            };
+            let depth: u128 = depth_str
                 .parse()
                 .map_err(|_| format!("bad mem depth in `{other}`"))?;
             // Read ports round-trip as numbered `raddrN`/`rdataN` pin-like
@@ -386,11 +392,41 @@ fn parse_cell_kind(
                 depth,
                 init,
                 read_ports,
+                edge,
             }
         }
         other if other.starts_with("$blackbox[") => {
-            let module_name = bracket_arg(other, "$blackbox[")?.to_string();
-            CellKind::BlackBox { module_name }
+            let inner = bracket_arg(other, "$blackbox[")?;
+            let (head, params) = match inner.split_once('(') {
+                Some((h, rest)) => {
+                    let list = rest
+                        .strip_suffix(')')
+                        .ok_or_else(|| format!("unclosed parameter list in `{other}`"))?;
+                    let params = list
+                        .split(',')
+                        .map(|kv| {
+                            let (k, v) = kv
+                                .split_once('=')
+                                .ok_or_else(|| format!("expected `NAME=value` in `{other}`"))?;
+                            let v: i128 = v
+                                .parse()
+                                .map_err(|_| format!("bad parameter value in `{other}`"))?;
+                            Ok((k.to_string(), v))
+                        })
+                        .collect::<Result<Vec<_>, String>>()?;
+                    (h, params)
+                }
+                None => (inner, Vec::new()),
+            };
+            let (module_name, verilog_name) = match head.split_once('=') {
+                Some((m, v)) => (m.to_string(), v.to_string()),
+                None => (head.to_string(), head.to_string()),
+            };
+            CellKind::BlackBox {
+                module_name,
+                verilog_name,
+                params,
+            }
         }
         other if other.starts_with("$const[") => {
             // `$const[<width>'d<decimal>]` — parse both fields back out.

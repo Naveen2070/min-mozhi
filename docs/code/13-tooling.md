@@ -480,6 +480,10 @@ for the session).
 - check -> `elaborate_project_with_mode(.., SimMode::Lower)` -> `ir::lower` ->
   `validate` ->
   `ir::opt::optimize` -> `validate` -> `print_line`/`print_sexpr`.
+- Everything up to the second `validate`, and the failure reports, live in
+  `src/commands/ir_pipeline.rs` (`lower_project`, `report`), shared with
+  `mimz build` so both commands lower and report identically; `ir.rs` keeps
+  only `--stats` and printing.
 - `lower` and `optimize` run inside `ir::failure::catch`
   (`crates/mimz-core/src/ir/failure.rs`): a panic becomes a `Failure`
   (stage, `Limitation`/`Internal`, message, panic site, innermost span,

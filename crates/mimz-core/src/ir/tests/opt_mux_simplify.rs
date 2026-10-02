@@ -100,6 +100,8 @@ fn driving_cell_skips_a_blackbox_pin_named_out() {
     module.cells.push(Cell {
         kind: CellKind::BlackBox {
             module_name: "Sink".to_string(),
+            verilog_name: "Sink".to_string(),
+            params: vec![],
         },
         pins: BTreeMap::from([("out", pin)]),
         span: Span::default(),

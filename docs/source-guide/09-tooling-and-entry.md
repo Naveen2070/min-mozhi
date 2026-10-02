@@ -10,7 +10,8 @@ These are thin functions that wire CLI arguments to the library modules. Nothing
 - **`compile.rs`** - full pipeline to a `.v` file; `--emit-testbench` also writes a `_tb.v` from inline `test` blocks
 - **`eval.rs`** - evaluate combinational modules (`--in`, `--module`, `--param`)
 - **`sim.rs`** - simulate with sweep, steps, traces, VCD
-- **`ir.rs`** - `mimz ir`: lower to the IR, run `ir::opt::optimize`, print it; a lowering/optimizer panic is caught by `ir::failure::catch` (`crates/mimz-core/src/ir/failure.rs`) and reported as an IR limitation or an internal compiler error
+- **`ir.rs`** - `mimz ir`: lower to the IR, run `ir::opt::optimize`, print it (and `--stats`)
+- **`ir_pipeline.rs`** - the pipeline `mimz ir` and `mimz build` share: check, elaborate, lower, validate, optimize, validate; a lowering/optimizer panic is caught by `ir::failure::catch` (`crates/mimz-core/src/ir/failure.rs`) and reported as an IR limitation or an internal compiler error
 - **`test.rs`** - run `tick`/`expect` test blocks
 - **`translate.rs`** - reskin keywords between flavors (`--to`, `--order`, romanization)
 - **`fmt.rs`** - in-place keyword normalization

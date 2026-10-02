@@ -439,51 +439,83 @@ fn flatten_extern_instance(
     // width-resolution helper the real child-elaboration path uses) never
     // hits its enum/bundle/array error arms here.
     for it in &em.items {
-        if let ModuleItem::Port { dir, name, ty } = it {
-            let (bits, signed) = type_width(ty, &cp, name.span)?;
-            let flat_name = format!("{pfx}{}", name.name);
-            let sig = Signal {
-                name: flat_name.clone(),
-                width: Width { bits, signed },
-            };
-            match dir {
-                // Same shape as a real instance's input (see the loop over
-                // `child.inputs` above): a parent wire driven by the
-                // (required) connection expression, rewritten into the
-                // parent's own scope. The checker (E0302) already guarantees
-                // every input is connected — this `ok_or_else` is the same
-                // defensive fallback `flatten_instance`'s own S0112 is, for
-                // `mimz sim`/`mimz test`'s checker-less path.
-                Dir::In => {
-                    let conn = inst
-                        .conns
-                        .iter()
-                        .find(|cn| cn.port.name == name.name)
-                        .ok_or_else(|| {
-                            Box::new(
-                                Diag::new(
-                                    inst.span,
-                                    format!(
-                                        "instance `{}`: input `{}` of `{}` is not connected",
-                                        inst.name.name, name.name, em.name.name
-                                    ),
+        match it {
+            ModuleItem::Port { dir, name, ty } => {
+                let (bits, signed) = type_width(ty, &cp, name.span)?;
+                let flat_name = format!("{pfx}{}", name.name);
+                let sig = Signal {
+                    name: flat_name.clone(),
+                    width: Width { bits, signed },
+                };
+                match dir {
+                    // Same shape as a real instance's input (see the loop over
+                    // `child.inputs` above): a parent wire driven by the
+                    // (required) connection expression, rewritten into the
+                    // parent's own scope. The checker (E0302) already guarantees
+                    // every input is connected — this `ok_or_else` is the same
+                    // defensive fallback `flatten_instance`'s own S0112 is, for
+                    // `mimz sim`/`mimz test`'s checker-less path.
+                    Dir::In => {
+                        let conn = inst
+                            .conns
+                            .iter()
+                            .find(|cn| cn.port.name == name.name)
+                            .ok_or_else(|| {
+                                Box::new(
+                                    Diag::new(
+                                        inst.span,
+                                        format!(
+                                            "instance `{}`: input `{}` of `{}` is not connected",
+                                            inst.name.name, name.name, em.name.name
+                                        ),
+                                    )
+                                    .with_code("S0112"),
                                 )
-                                .with_code("S0112"),
-                            )
-                        })?;
-                    flat.wires.push(sig.clone());
-                    flat.comb.push((flat_name, prw.expr(&conn.signal)?));
+                            })?;
+                        flat.wires.push(sig.clone());
+                        flat.comb.push((flat_name, prw.expr(&conn.signal)?));
+                    }
+                    Dir::Out => {
+                        flat.wires.push(sig.clone());
+                        flat.unknown.push(flat_name);
+                    }
                 }
-                Dir::Out => {
-                    flat.wires.push(sig.clone());
-                    flat.unknown.push(flat_name);
-                }
+                ports.push((name.name.clone(), sig, *dir));
             }
-            ports.push((name.name.clone(), sig, *dir));
+            ModuleItem::Clock(n) | ModuleItem::Reset { name: n, .. } => {
+                // Same rule as a real child's clock/reset (`clock_map` in
+                // `flatten_instance`): explicit connection, else the
+                // same-named parent signal.
+                let parent = inst
+                    .conns
+                    .iter()
+                    .find(|cn| cn.port.name == n.name)
+                    .map(|cn| prw.expr(&cn.signal).and_then(|e| conn_signal_name(&e)))
+                    .transpose()?
+                    .unwrap_or_else(|| n.name.clone());
+                let sig = Signal {
+                    name: parent,
+                    width: Width {
+                        bits: 1,
+                        signed: false,
+                    },
+                };
+                ports.push((n.name.clone(), sig, Dir::In));
+            }
+            _ => {}
         }
     }
     flat.extern_instances.push(ExternInstance {
         module_name: em.name.name.clone(),
+        verilog_name: em
+            .verilog_name
+            .clone()
+            .unwrap_or_else(|| em.name.name.clone()),
+        params: em
+            .params
+            .iter()
+            .map(|p| (p.name.name.clone(), cp[&p.name.name]))
+            .collect(),
         ports,
         span: inst.span,
     });

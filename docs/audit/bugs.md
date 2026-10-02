@@ -19,7 +19,7 @@ entries to the last range file and a row here.**
 | BUG-41–50 | [`bugs/bug-41-50.md`](bugs/bug-41-50.md) | 10      |
 | BUG-51–60 | [`bugs/bug-51-60.md`](bugs/bug-51-60.md) | 10      |
 | BUG-61–70 | [`bugs/bug-61-70.md`](bugs/bug-61-70.md) | 10      |
-| BUG-71–80 | [`bugs/bug-71-80.md`](bugs/bug-71-80.md) | 9       |
+| BUG-71–80 | [`bugs/bug-71-80.md`](bugs/bug-71-80.md) | 10      |
 
 ## Every bug
 
@@ -106,6 +106,7 @@ records.
 | **BUG-77** | 🟡 MEDIUM   | OPEN                                                                                  | [`mimz sim` sizes a constant `if` branch at its own natural width, so `~(if K == 0 { 0 } else { a })` is 1, not 0xFF](bugs/bug-71-80.md#bug-77-medium-open---mimz-sim-sizes-a-constant-if-branch-at-its-own-natural-width-so-if-k--0--0--else--a--is-1-not-0xff)                                                                                                                                                 |
 | **BUG-78** | 🟡 MEDIUM   | OPEN                                                                                  | [the checker accepts an out-of-range instance-array index in a live branch; Verilog output is invalid and `mimz ir` reports an internal error](bugs/bug-71-80.md#bug-78-medium-open---the-checker-accepts-an-out-of-range-instance-array-index-in-a-live-branch-verilog-output-is-invalid-and-mimz-ir-reports-an-internal-error)                                                                                 |
 | **BUG-79** | 🟡 MEDIUM   | OPEN                                                                                  | [`mimz sim` resets every register when any reset is high, ignoring each module's own reset connection](bugs/bug-71-80.md#bug-79-medium-open---mimz-sim-resets-every-register-when-any-reset-is-high-ignoring-each-modules-own-reset-connection)                                                                                                                                                                  |
+| **BUG-80** | 🟡 MEDIUM   | OPEN                                                                                  | [an unconnected clock/reset of an instance, with no same-named parent signal, passes `mimz check`; Verilog gets a floating net and `mimz ir` reports an internal error](bugs/bug-71-80.md#bug-80-medium-open---an-unconnected-clockreset-of-an-instance-with-no-same-named-parent-signal-passes-mimz-check-verilog-gets-a-floating-net-and-mimz-ir-reports-an-internal-error)                                    |
 
 ## Still open
 
@@ -120,3 +121,4 @@ records.
 | **BUG-77** | 🟡 MEDIUM | [`mimz sim` sizes a constant `if` branch at its own natural width, so `~(if K == 0 { 0 } else { a })` is 1, not 0xFF](bugs/bug-71-80.md#bug-77-medium-open---mimz-sim-sizes-a-constant-if-branch-at-its-own-natural-width-so-if-k--0--0--else--a--is-1-not-0xff)                                                                                                                                           |
 | **BUG-78** | 🟡 MEDIUM | [the checker accepts an out-of-range instance-array index in a live branch; Verilog output is invalid and `mimz ir` reports an internal error](bugs/bug-71-80.md#bug-78-medium-open---the-checker-accepts-an-out-of-range-instance-array-index-in-a-live-branch-verilog-output-is-invalid-and-mimz-ir-reports-an-internal-error)                                                                           |
 | **BUG-79** | 🟡 MEDIUM | [`mimz sim` resets every register when any reset is high, ignoring each module's own reset connection](bugs/bug-71-80.md#bug-79-medium-open---mimz-sim-resets-every-register-when-any-reset-is-high-ignoring-each-modules-own-reset-connection)                                                                                                                                                            |
+| **BUG-80** | 🟡 MEDIUM | [an unconnected clock/reset of an instance, with no same-named parent signal, passes `mimz check`; Verilog gets a floating net and `mimz ir` reports an internal error](bugs/bug-71-80.md#bug-80-medium-open---an-unconnected-clockreset-of-an-instance-with-no-same-named-parent-signal-passes-mimz-check-verilog-gets-a-floating-net-and-mimz-ir-reports-an-internal-error)                              |

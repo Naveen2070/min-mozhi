@@ -14,6 +14,7 @@ mod fmt;
 mod helpers;
 mod init;
 mod ir;
+mod ir_pipeline;
 mod lint;
 mod repl;
 mod sim;

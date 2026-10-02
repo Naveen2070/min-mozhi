@@ -150,9 +150,17 @@ pub enum CellKind {
         depth: u128,
         init: crate::checker::consteval::ConstVal,
         read_ports: Vec<(Bits, Bits)>,
+        /// The edge the write port triggers on; ignored for a ROM.
+        edge: Edge,
     },
     BlackBox {
         module_name: String,
+        /// The real Verilog module name to instantiate (`extern module X =
+        /// "Y"`), equal to `module_name` when no alias is given.
+        verilog_name: String,
+        /// The extern's folded parameters for this instance, in declaration
+        /// order.
+        params: Vec<(String, i128)>,
     },
     /// A compile-time-folded constant (an `ExprKind::Int`/`Bool` literal,
     /// or a synthesized register reset value). Zero input pins, one
