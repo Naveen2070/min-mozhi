@@ -16,17 +16,46 @@ the VS Code extension. All commands run from the **repo root** unless noted.
 
 ## 1. Toolchain (prerequisites)
 
-| Tool                                  | Version                                                                                  | Needed for                            | Install                                                  |
-| ------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------- | -------------------------------------------------------- |
-| **Rust** (`rustc` + `cargo`)          | **1.85+** (MSRV); edition 2024                                                           | the compiler, everything              | <https://rustup.rs>                                      |
-| **rustup**                            | any                                                                                      | managing the wasm target              | comes with the rustup installer                          |
-| **wasm32 target**                     | -                                                                                        | building the WASM crate               | `rustup target add wasm32-unknown-unknown`               |
-| **wasm-pack** _(recommended)_         | latest                                                                                   | web `.wasm` + JS glue (runs wasm-opt) | `cargo install wasm-pack`                                |
-| **wasm-bindgen-cli** _(or)_           | **must match** the `wasm-bindgen` crate (see [section 5](#5-wasm-crate-cratesmimz-wasm)) | manual/headless wasm glue             | `cargo install wasm-bindgen-cli --version <X.Y.Z>`       |
-| **Node.js** + **npm**                 | Node ≥ 20 (dev on 24); npm 11                                                            | the website + VS Code extension       | <https://nodejs.org>                                     |
-| **Icarus Verilog** (`iverilog`/`vvp`) | any                                                                                      | _optional_ - the differential tests   | <https://bleyer.org/icarus> (Win) / your package manager |
+| Tool                                  | Version                                                                                  | Needed for                                | Install                                                   |
+| ------------------------------------- | ---------------------------------------------------------------------------------------- | ----------------------------------------- | --------------------------------------------------------- |
+| **Rust** (`rustc` + `cargo`)          | **1.85+** (MSRV); edition 2024                                                           | the compiler, everything                  | <https://rustup.rs>                                       |
+| **rustup**                            | any                                                                                      | managing the wasm target                  | comes with the rustup installer                           |
+| **wasm32 target**                     | -                                                                                        | building the WASM crate                   | `rustup target add wasm32-unknown-unknown`                |
+| **wasm-pack** _(recommended)_         | latest                                                                                   | web `.wasm` + JS glue (runs wasm-opt)     | `cargo install wasm-pack`                                 |
+| **wasm-bindgen-cli** _(or)_           | **must match** the `wasm-bindgen` crate (see [section 5](#5-wasm-crate-cratesmimz-wasm)) | manual/headless wasm glue                 | `cargo install wasm-bindgen-cli --version <X.Y.Z>`        |
+| **Node.js** + **npm**                 | Node ≥ 20 (dev on 24); npm 11                                                            | the website + VS Code extension           | <https://nodejs.org>                                      |
+| **Icarus Verilog** (`iverilog`/`vvp`) | any                                                                                      | _optional_ - the differential tests       | <https://bleyer.org/icarus> (Win) / your package manager  |
+| **OSS CAD Suite** (YosysHQ)           | latest nightly (checked: 20261001)                                                       | _optional_ - the synthesis path (Phase 2) | <https://github.com/YosysHQ/oss-cad-suite-build/releases> |
 
 `prettier` and `markdownlint-cli2` are run via `npx` - no install needed.
+
+### OSS CAD Suite (synthesis tools)
+
+One download bundles Yosys, nextpnr-ice40, IceStorm (`icepack`, `icetime`,
+`icebram`, `iceprog`), Icarus and GTKWave. Not needed to build or test the
+compiler today; needed for the synthesis path (`.mimz -> IR -> Yosys ->
+nextpnr -> bitstream`).
+
+- **Linux / macOS:** unpack, then `source <suite>/environment`. Everything works
+  as documented, including the default `synth_ice40` flow. CI uses Linux.
+- **Windows - known Yosys bug: use `synth_ice40 -noabc`.** On Windows builds the
+  default `synth_ice40` crashes in its ABC9 step (`ABC: execution of command ...
+failed: return code 3` or `-2`; inside ABC, `Assertion failed: firstIn+i <
+p->nCos`). Cause: the experimental `write_xaiger2` backend writes its binary
+  file in text mode, so Windows inserts a CR before every LF byte and ABC reads
+  a corrupt netlist. It hits most real designs and is in every Windows nightly
+  checked (20260929, 20261001). `synth_ice40 -noabc` (Yosys's built-in LUT
+  mapper) works and gives slightly larger netlists. `-nocarry` does not help.
+  **Linux builds do not have this bug** - CI and any Linux machine (or WSL)
+  run the default flow. Recorded in `docs/log/2026-10-02.md`.
+- **Windows - do not put `<suite>\bin` on PATH.** Its tools need DLLs from
+  `<suite>\lib`, and other MinGW programs on PATH (e.g. `C:\iverilog\bin`)
+  ship same-named, older DLLs, so `yosys` fails to start (`0xC0000135` /
+  `0xC0000139`). Putting `<suite>\lib` on PATH instead makes `python3`/`pip3`
+  resolve to the suite's bundled Python. Either load the suite per session
+  (`. <suite>\environment.ps1`) or use per-tool launcher `.exe`s that add
+  `bin` and `lib` to PATH for the child process only (real `.exe`s, not `.cmd`:
+  Rust's `Command::new` - used by the Icarus tests - only finds `.exe`).
 
 ---
 

@@ -42,7 +42,7 @@ examples/          200 example files across 5 folders (44 english, 44 tanglish, 
 demo/              Real hardware demos (alu, cpu)
 editors/vscode/    VS Code extension (plain JS, no build)
 lang/              Language data: keywords.toml, messages.toml, case_suffixes.toml
-spec/              Language specification (7 .md files)
+spec/              Language specification (8 .md files)
 docs/              All documentation (see table below)
 site/              Astro documentation website
 tools/test-summary/Cargo test wrapper (dev helper)

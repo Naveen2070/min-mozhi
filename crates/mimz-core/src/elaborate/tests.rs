@@ -54,6 +54,10 @@ fn elaborates_the_counter() {
             reset: crate::checker::consteval::ConstVal::zero(),
             clock: "clk".into(),
             edge: Edge::Rise,
+            reset_by: Some(RegReset {
+                signal: "rst".into(),
+                is_async: false,
+            }),
         }]
     );
     assert!(d.comb.contains_key("count")); // count = value

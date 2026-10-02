@@ -27,7 +27,10 @@ pub fn eliminate_dead_cells(module: &mut Module) -> bool {
 fn is_stateful(kind: &CellKind) -> bool {
     matches!(
         kind,
-        CellKind::Dff { .. } | CellKind::Mem { .. } | CellKind::BlackBox { .. }
+        CellKind::Dff { .. }
+            | CellKind::Adff { .. }
+            | CellKind::Mem { .. }
+            | CellKind::BlackBox { .. }
     )
 }
 
@@ -70,7 +73,7 @@ fn roots(module: &Module) -> Vec<NetId> {
         );
         // Inputs carried in the kind itself rather than in `pins`.
         match &cell.kind {
-            CellKind::Dff { clock, .. } => nets.push(*clock),
+            CellKind::Dff { clock, .. } | CellKind::Adff { clock, .. } => nets.push(*clock),
             CellKind::Mem { read_ports, .. } => nets.extend(
                 read_ports
                     .iter()
@@ -95,7 +98,9 @@ fn compact_nets(module: &mut Module) {
             mark(&mut used, &bits.nets);
         }
         match &cell.kind {
-            CellKind::Dff { clock, .. } => mark(&mut used, std::slice::from_ref(clock)),
+            CellKind::Dff { clock, .. } | CellKind::Adff { clock, .. } => {
+                mark(&mut used, std::slice::from_ref(clock))
+            }
             CellKind::Mem { read_ports, .. } => {
                 for (raddr, rdata) in read_ports {
                     mark(&mut used, &raddr.nets);
@@ -122,7 +127,9 @@ fn compact_nets(module: &mut Module) {
             renumber(&mut bits.nets, &remap);
         }
         match &mut cell.kind {
-            CellKind::Dff { clock, .. } => renumber(std::slice::from_mut(clock), &remap),
+            CellKind::Dff { clock, .. } | CellKind::Adff { clock, .. } => {
+                renumber(std::slice::from_mut(clock), &remap)
+            }
             CellKind::Mem { read_ports, .. } => {
                 for (raddr, rdata) in read_ports {
                     renumber(&mut raddr.nets, &remap);

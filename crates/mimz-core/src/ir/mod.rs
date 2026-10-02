@@ -1,5 +1,5 @@
 //! The Min-Mozhi IR (Phase 2, v1): a typed netlist lowered from the flat
-//! `elaborate::Design`. See `docs/plan/phase-2-ir-design.local.md`.
+//! `elaborate::Design`. The contract is `spec/07-ir.md`.
 
 pub mod exec;
 pub mod failure;
@@ -120,6 +120,15 @@ pub enum CellKind {
     Dff {
         clock: NetId,
         edge: Edge,
+    },
+    /// A register with an asynchronous active-high reset: while the 1-bit
+    /// `arst` pin is 1, `q` is `value`; otherwise `q` takes `d` on `edge` of
+    /// `clock`. Pins `d`, `q`, `arst`. A synchronous reset has no kind of its
+    /// own: it lowers to a `Mux` in front of a plain `Dff`'s `d`.
+    Adff {
+        clock: NetId,
+        edge: Edge,
+        value: crate::checker::consteval::ConstVal,
     },
     /// A memory array: `depth` words, each as wide as the `rdata`/`wdata`
     /// pins, seeded to `init` at power-on (carried as cell metadata per the

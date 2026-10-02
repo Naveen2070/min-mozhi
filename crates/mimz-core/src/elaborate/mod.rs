@@ -120,6 +120,20 @@ pub struct Reg {
     /// The edge of the assigning `on` block (`rise`/`fall`). Defaults to `Rise`
     /// for an unassigned reg (it never ticks).
     pub edge: Edge,
+    /// The reset that clears this register: its own module's first declared
+    /// reset, async when any reset in that module is `async` (the Verilog
+    /// emitter's rule). `None` when the module declares no reset.
+    pub reset_by: Option<RegReset>,
+}
+
+/// The reset that clears a register, by flattened signal name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RegReset {
+    /// Flattened reset signal name. A child's reset is renamed to the parent
+    /// reset it is connected to.
+    pub signal: String,
+    /// `async reset` (`true`) or `reset` (`false`).
+    pub is_async: bool,
 }
 
 /// A memory: an array of `depth` cells, each `width` bits, seeded to the folded

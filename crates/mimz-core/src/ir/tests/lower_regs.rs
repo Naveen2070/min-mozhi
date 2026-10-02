@@ -65,6 +65,7 @@ pub(super) fn reg_design() -> Design {
             },
             clock: "clk".into(),
             edge: Edge::Rise,
+            reset_by: None,
         }],
         mems: vec![],
         comb: BTreeMap::new(),
@@ -114,6 +115,10 @@ fn lowers_a_register_with_no_reset_to_a_dff_cell() {
 fn lowers_a_register_with_synchronous_reset_to_a_muxed_dff() {
     let mut design = reg_design();
     design.resets = vec!["rst".to_string()];
+    design.regs[0].reset_by = Some(crate::elaborate::RegReset {
+        signal: "rst".into(),
+        is_async: false,
+    });
     design.inputs.push(Signal {
         name: "rst".into(),
         width: w(1),
@@ -300,5 +305,116 @@ fn lowers_a_register_from_a_real_elaborated_design_with_clock_and_reset() {
     assert_eq!(
         *clock, clk_bits.nets[0],
         "the Dff's clock net is clk's own port net"
+    );
+}
+
+// ---- per-register reset / Adff (synthesis pre-prep Task 1) ----
+
+use super::lower_valid;
+use crate::bits::Bits as CBits;
+use crate::ir::exec::Executor;
+use crate::value::Val;
+
+fn kinds(module: &crate::ir::Module) -> (usize, usize) {
+    let dff = module
+        .cells
+        .iter()
+        .filter(|c| matches!(c.kind, CellKind::Dff { .. }))
+        .count();
+    let adff = module
+        .cells
+        .iter()
+        .filter(|c| matches!(c.kind, CellKind::Adff { .. }))
+        .count();
+    (dff, adff)
+}
+
+/// Inputs, one tick, then `q`.
+fn step(ex: &mut Executor, rst: u128, d: u128) -> CBits {
+    ex.set_input("rst", Val::new(rst, 1, false));
+    ex.set_input("d", Val::new(d, 4, false));
+    ex.tick();
+    ex.get_output("q").bits
+}
+
+const ASYNC: &str = "module M {\n  clock clk\n  async reset rst\n  in d: bits[4]\n  out q: bits[4]\n  reg r: bits[4] = 5\n  on rise(clk) {\n    r <- d\n  }\n  q = r\n}\n";
+
+#[test]
+fn an_async_reset_register_lowers_to_adff() {
+    let module = lower_valid(ASYNC);
+    assert_eq!(kinds(&module), (0, 1));
+    // No reset mux in front of `d`: the reset lives in the cell.
+    assert!(!module.cells.iter().any(|c| c.kind == CellKind::Mux));
+    let mut ex = Executor::new(&module);
+    assert_eq!(step(&mut ex, 1, 9), CBits::Small(5));
+    assert_eq!(step(&mut ex, 0, 9), CBits::Small(9));
+}
+
+#[test]
+fn a_sync_reset_register_still_lowers_to_mux_and_dff() {
+    let module = lower_valid(&ASYNC.replace("async reset", "reset"));
+    assert_eq!(kinds(&module), (1, 0));
+    let mut ex = Executor::new(&module);
+    assert_eq!(step(&mut ex, 1, 9), CBits::Small(5));
+    assert_eq!(step(&mut ex, 0, 9), CBits::Small(9));
+}
+
+#[test]
+fn an_async_reset_on_a_falling_edge_keeps_the_edge() {
+    let module = lower_valid(&ASYNC.replace("on rise(clk)", "on fall(clk)"));
+    let edge = module.cells.iter().find_map(|c| match &c.kind {
+        CellKind::Adff { edge, .. } => Some(*edge),
+        _ => None,
+    });
+    assert_eq!(edge, Some(crate::ast::Edge::Fall));
+}
+
+const CHILD: &str = "module Child {\n  clock clk\n  async reset rst\n  in d: bits[4]\n  out q: bits[4]\n  reg r: bits[4] = 5\n  on rise(clk) {\n    r <- d\n  }\n  q = r\n}\n";
+
+/// `src` + elaborate `Top` + lower + validate-clean.
+fn lower_top(src: &str) -> crate::ir::Module {
+    let file = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+    crate::checker::check(std::slice::from_ref(&file)).expect("checks clean");
+    let design = crate::elaborate::elaborate_project(
+        std::slice::from_ref(&file),
+        Some("Top"),
+        &std::collections::BTreeMap::new(),
+    )
+    .expect("elaborates");
+    let module = crate::ir::lower(&design);
+    assert_eq!(crate::ir::validate::validate(&module), Vec::new());
+    module
+}
+
+#[test]
+fn a_child_keeps_its_own_async_reset_under_a_sync_parent() {
+    let src = format!(
+        "{CHILD}module Top {{\n  clock clk\n  reset rst\n  in d: bits[4]\n  out q: bits[4]\n  out p: bits[4]\n  reg r: bits[4] = 3\n  on rise(clk) {{\n    r <- d\n  }}\n  let c = Child() {{ d: d }}\n  q = c.q\n  p = r\n}}\n"
+    );
+    let module = lower_top(&src);
+    assert_eq!(kinds(&module), (1, 1), "parent sync Dff + child Adff");
+}
+
+#[test]
+fn a_child_reset_follows_its_connection() {
+    // The child's `rst` is wired to the parent's `sys_rst`, not to the
+    // parent's first reset `rst`.
+    let src = format!(
+        "{CHILD}module Top {{\n  clock clk\n  reset rst\n  async reset sys_rst\n  in d: bits[4]\n  out q: bits[4]\n  let c = Child() {{ d: d, rst: sys_rst }}\n  q = c.q\n}}\n"
+    );
+    let module = lower_top(&src);
+    let mut ex = Executor::new(&module);
+    ex.set_input("rst", Val::new(0, 1, false));
+    ex.set_input("sys_rst", Val::new(1, 1, false));
+    ex.set_input("d", Val::new(9, 4, false));
+    ex.tick();
+    assert_eq!(ex.get_output("q").bits, CBits::Small(5), "reset by sys_rst");
+    ex.set_input("rst", Val::new(1, 1, false));
+    ex.set_input("sys_rst", Val::new(0, 1, false));
+    ex.tick();
+    assert_eq!(
+        ex.get_output("q").bits,
+        CBits::Small(9),
+        "parent rst does not reset the child"
     );
 }

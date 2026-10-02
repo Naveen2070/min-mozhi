@@ -546,3 +546,63 @@ fn a_declared_extern_input_named_out_is_not_a_driver() {
 
     assert_eq!(validate::validate(&module), Vec::new());
 }
+
+#[test]
+fn every_validation_error_has_a_one_line_message() {
+    use crate::ir::NetId;
+    use crate::ir::validate::ValidationError as E;
+    let cases = [
+        (
+            E::MultipleDrivers {
+                net: NetId(4),
+                cell_indices: vec![1, 3],
+            },
+            "net 4 has 2 drivers (cells 1, 3)",
+        ),
+        (
+            E::UndrivenNet { net: NetId(7) },
+            "net 7 is read but nothing drives it",
+        ),
+        (
+            E::WidthMismatch {
+                cell_index: 2,
+                pin: "a",
+                expected: 8,
+                found: 4,
+            },
+            "cell 2: pin `a` is 4 bits, expected 8",
+        ),
+        (
+            E::CombinationalCycle {
+                nets: vec![NetId(1), NetId(2)],
+            },
+            "combinational cycle through nets 1, 2",
+        ),
+        (
+            E::BlackBoxPortMismatch {
+                cell_index: 5,
+                reason: "missing port `clk`".to_string(),
+            },
+            "cell 5: black box ports do not match the extern declaration: missing port `clk`",
+        ),
+        (
+            E::PortWidthMismatch {
+                port: "o".to_string(),
+                declared: 8,
+                found: 9,
+            },
+            "output port `o` is 9 bits, declared 8",
+        ),
+        (
+            E::ShiftGrowthTooWide {
+                cell_index: 6,
+                lhs_width: 64,
+                amount_width: 32,
+            },
+            "cell 6: left shift of a 64-bit value by a 32-bit amount can grow past the width limit",
+        ),
+    ];
+    for (err, want) in cases {
+        assert_eq!(err.to_string(), want);
+    }
+}

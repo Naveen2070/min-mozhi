@@ -215,6 +215,7 @@ Seven markdown files that define **exactly** what Min-Mozhi is:
 - **`04-grammar-engine.md`** - how the code-order/thamizh-order system works
 - **`05-simulator.md`** - the simulator's design
 - **`06-editions.md`** - the language edition system
+- **`07-ir.md`** - the IR netlist contract (cells, widths, validation, optimizer)
 - **`README.md`** - spec overview
 
 If there's ever a debate about how something should work, the spec wins. The spec is the truth.

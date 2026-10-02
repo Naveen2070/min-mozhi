@@ -10,10 +10,10 @@ use std::collections::BTreeMap;
 /// from `make(v).<field>`, so the failing expression sits on the `wire h` line.
 const LIMITATION: &str = "bundle Handshake(W: int = 8) {\n  valid: bit\n  data:  bits[W]\n}\n\nfn make(v: bit) -> Handshake(W: 8) {\n  { valid: v, data: 0 }\n}\n\nmodule Top {\n  in  v: bit\n  out o: bit\n  wire h: Handshake(W: 8) = make(v)\n  o = h.valid\n}\n";
 
-/// Real source that hits a broken invariant in `ir::lower`: the constant-`if`
-/// fold's known limit (gaps.md, "limits left by the 2026-09-29 lowering
-/// fixes") leaves the phantom `s[-1]` read under `!`.
-const INTERNAL: &str = "module Pass {\n  in  x: bit\n  out y: bit\n  y = x\n}\n\nmodule Top {\n  in  a: bits[4]\n  out o: bits[4]\n  repeat i: 0..4 {\n    let s[i] = Pass() { x: a[i] }\n    o[i] = !(if i == 0 { 0 } else { s[i - 1].y })\n  }\n}\n";
+/// Real source that hits a broken invariant in `ir::lower`: the checker
+/// accepts a live read of instance `s[-1]` at `i == 0` (gaps.md, "the checker
+/// accepts an out-of-range instance-array index"), so `s__-1_y` has no driver.
+const INTERNAL: &str = "module Pass {\n  in  x: bit\n  out y: bit\n  y = x\n}\n\nmodule Top {\n  in  a: bits[4]\n  out o: bits[4]\n  repeat i: 0..4 {\n    let s[i] = Pass() { x: a[i] }\n    o[i] = if a[3] { 0 } else { s[i - 1].y }\n  }\n}\n";
 
 fn lower_top(src: &str) -> Result<crate::ir::Module, crate::ir::failure::Failure> {
     let file = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
@@ -40,9 +40,9 @@ fn ok_passes_the_value_through() {
 }
 
 #[test]
-fn unimplemented_is_a_limitation() {
+fn a_declared_limitation_is_a_limitation() {
     let f = catch(Stage::Lower, false, || -> u8 {
-        unimplemented!("field access")
+        crate::ir::failure::limitation("field access".to_string())
     })
     .unwrap_err();
     assert_eq!(f.kind, FailureKind::Limitation);
@@ -60,12 +60,28 @@ fn unimplemented_is_a_limitation() {
 }
 
 #[test]
-fn the_loop_budget_panic_is_a_limitation() {
+fn a_bare_unimplemented_is_internal() {
+    // Only `limitation` declares a limitation; a stray `unimplemented!` is a bug.
+    let f = catch(Stage::Lower, false, || -> u8 { unimplemented!("x") }).unwrap_err();
+    assert_eq!(f.kind, FailureKind::Internal);
+}
+
+#[test]
+fn the_text_alone_no_longer_makes_a_limitation() {
     let f = catch(Stage::Lower, false, || -> u8 {
         panic!("`loop` would unroll 9999 times, over the limit of 4096 (S0227)")
     })
     .unwrap_err();
-    assert_eq!(f.kind, FailureKind::Limitation);
+    assert_eq!(f.kind, FailureKind::Internal);
+}
+
+#[test]
+fn a_limitation_does_not_leak_into_the_next_catch() {
+    let _ = catch(Stage::Lower, false, || -> u8 {
+        crate::ir::failure::limitation("x".to_string())
+    });
+    let f = catch(Stage::Lower, false, || -> u8 { panic!("broken") }).unwrap_err();
+    assert_eq!(f.kind, FailureKind::Internal);
 }
 
 #[test]
@@ -82,7 +98,10 @@ fn a_broken_invariant_is_internal() {
 
 #[test]
 fn every_optimize_failure_is_internal() {
-    let f = catch(Stage::Optimize, false, || -> u8 { unimplemented!("x") }).unwrap_err();
+    let f = catch(Stage::Optimize, false, || -> u8 {
+        crate::ir::failure::limitation("x".to_string())
+    })
+    .unwrap_err();
     assert_eq!(f.kind, FailureKind::Internal);
 }
 

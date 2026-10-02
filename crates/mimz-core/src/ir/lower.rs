@@ -369,6 +369,61 @@ impl<'a> LowerCtx<'a> {
         }
     }
 
+    /// Whether every name `e` reads exists, so lowering it cannot panic in
+    /// `resolve`. False for a dead `if` branch `elaborate` flattened to an
+    /// instance that was never created (`s[i - 1].y` -> `s__-1_y` at
+    /// `i == 0`): `elaborate` rewrites both branches before anything folds.
+    fn names_resolve(
+        &self,
+        e: &Expr,
+        locals: Option<&HashMap<String, Bits>>,
+        arrays: Option<&HashMap<String, u32>>,
+    ) -> bool {
+        let all = |es: &[Expr]| es.iter().all(|x| self.names_resolve(x, locals, arrays));
+        match &e.kind {
+            ExprKind::Ident(n) => {
+                locals.is_some_and(|l| l.contains_key(n))
+                    || arrays.is_some_and(|a| a.contains_key(n))
+                    || self.visible_consts(locals).contains_key(n)
+                    || self.resolved.contains_key(n)
+                    || self.design.comb.contains_key(n)
+                    || self.design.mems.iter().any(|m| &m.name == n)
+            }
+            ExprKind::Int { .. } | ExprKind::Bool(_) => true,
+            ExprKind::Field { base, .. } | ExprKind::Unary { expr: base, .. } => {
+                self.names_resolve(base, locals, arrays)
+            }
+            ExprKind::Binary { lhs, rhs, .. }
+            | ExprKind::Index {
+                base: lhs,
+                index: rhs,
+            } => self.names_resolve(lhs, locals, arrays) && self.names_resolve(rhs, locals, arrays),
+            ExprKind::IfExpr { cond, then, els } => [cond, then, els]
+                .iter()
+                .all(|x| self.names_resolve(x, locals, arrays)),
+            ExprKind::Slice { base, hi, lo } => [base, hi, lo]
+                .iter()
+                .all(|x| self.names_resolve(x, locals, arrays)),
+            ExprKind::Match { scrutinee, arms } => {
+                self.names_resolve(scrutinee, locals, arrays)
+                    && arms
+                        .iter()
+                        .all(|a| self.names_resolve(&a.value, locals, arrays))
+            }
+            ExprKind::Replicate { count, parts } => {
+                self.names_resolve(count, locals, arrays) && all(parts)
+            }
+            ExprKind::Concat(es)
+            | ExprKind::ArrayLit(es)
+            | ExprKind::Call { args: es, .. }
+            | ExprKind::FnCall { args: es, .. }
+            | ExprKind::EnumConstruct { args: es, .. } => all(es),
+            ExprKind::BundleLit(fields) => fields
+                .iter()
+                .all(|f| self.names_resolve(&f.value, locals, arrays)),
+        }
+    }
+
     /// Lowers `e` as the SIBLING of an already-lowered `other` — a mux
     /// branch opposite its other branch, a `match` arm opposite the arm
     /// chain it folds into. The checker unifies both to one `Ty`, so an
@@ -840,14 +895,12 @@ impl<'a> LowerCtx<'a> {
                 for (param, arg) in func.params.iter().zip(args) {
                     if matches!(param.ty, Type::Array { .. }) {
                         let ExprKind::ArrayLit(elems) = &arg.kind else {
-                            unimplemented!(
+                            super::failure::limitation(format!(
                                 "array-typed fn-call argument must be an array literal (the \
                                  only shape a module signal can produce, E0416); fn `{}`, \
                                  param `{}`, got {:?}",
-                                name.name,
-                                param.name.name,
-                                arg.kind
-                            );
+                                name.name, param.name.name, arg.kind
+                            ));
                         };
                         let Type::Array { elem, .. } = &param.ty else {
                             unreachable!("just matched Type::Array");
@@ -1154,10 +1207,10 @@ impl<'a> LowerCtx<'a> {
                 }
                 Bits::unsigned(ids)
             }
-            other => unimplemented!(
+            other => super::failure::limitation(format!(
                 "expression form not yet lowered by Task 6 (see later tasks for \
                  field access): {other:?}"
-            ),
+            )),
         };
         if locals.is_none() {
             self.expr_memo.insert(site, result.clone());
@@ -1536,10 +1589,10 @@ impl<'a> LowerCtx<'a> {
                     .expect("checker guarantees a fn loop's hi bound const-folds");
                 let count = (hi_v - lo_v).max(0);
                 if count > crate::REPEAT_BUDGET {
-                    panic!(
+                    super::failure::limitation(format!(
                         "`loop` would unroll {count} times, over the limit of {} (S0227)",
                         crate::REPEAT_BUDGET
-                    );
+                    ));
                 }
                 let mut unrolled: Vec<FnStmt> = Vec::new();
                 let mut i = lo_v;
@@ -1789,7 +1842,9 @@ impl<'a> LowerCtx<'a> {
     /// its width from a real sibling (`lower_sibling`); when both branches
     /// are constant there is no sibling, so a declared `target_width` sizes
     /// them, the same rule `lower_match` applies to all-constant arms.
-    /// A condition that folds at compile time lowers only the taken branch.
+    /// A condition that folds at compile time lowers only the taken branch,
+    /// except that a constant taken branch with no target width still lowers
+    /// a dead branch that resolves, to borrow its width.
     #[allow(clippy::too_many_arguments)]
     fn lower_if(
         &mut self,
@@ -1826,10 +1881,18 @@ impl<'a> LowerCtx<'a> {
                 (false, _, _) | (true, true, None) => {
                     return self.lower_expr(module, taken, locals, arrays);
                 }
-                // ponytail: a constant taken branch needs its real sibling's
-                // width, so this shape still lowers both branches and would
-                // still panic on a phantom dead branch; no example has it.
-                (true, false, None) => {}
+                // A constant taken branch takes its real sibling's width (the
+                // checker unifies both), so the dead branch is lowered too and
+                // the mux below folds away. When the dead branch names
+                // something that was never created there is nothing to lower:
+                // the constant keeps its natural width, as `mimz sim` does.
+                // ponytail: natural width differs from the checker's in a
+                // width-sensitive position (`~`, a concat part); gaps.md GAP-1.
+                (true, false, None) => {
+                    if !self.names_resolve(dead, locals, arrays) {
+                        return self.lower_expr(module, taken, locals, arrays);
+                    }
+                }
             }
         }
         let sel = self.lower_expr(module, cond, locals, arrays);
@@ -2319,10 +2382,10 @@ impl<'a> LowerCtx<'a> {
                         .expect("checker guarantees an on-block loop's hi bound const-folds");
                     let count = (hi_v - lo_v).max(0);
                     if count > crate::REPEAT_BUDGET {
-                        panic!(
+                        super::failure::limitation(format!(
                             "`loop` would unroll {count} times, over the limit of {} (S0227)",
                             crate::REPEAT_BUDGET
-                        );
+                        ));
                     }
                     // `var` has no declared width of its own (the checker
                     // binds it as a plain `ConstVal`, adapting to whatever
@@ -2572,46 +2635,64 @@ pub fn lower(design: &Design) -> Module {
         let mut env: HashMap<String, Bits> = HashMap::new();
         env.insert(reg.name.clone(), q_bits.clone()); // unassigned path: keep current value
         ctx.lower_seq_stmts(&mut module, &proc.body, &mut env, None);
-        let mut d_bits = env
+        let d_bits = env
             .remove(&reg.name)
             .expect("lower_seq_stmts always re-inserts every target it started with");
 
-        if let Some(reset_name) = design.resets.first() {
-            let reset_sel = ctx.resolve(&mut module, reset_name);
-            // `elaborate::module`'s `const_eval_wide(&reset_expr)` stores the
-            // reset value at the folded constant's OWN natural width and
-            // natural signedness, not the register's — so `reg q: signed[8] =
-            // -1` arrived here as the 1-bit constant `1`. Re-size it through
-            // the same sign-aware `from_const_at_width` `lower_expr_sized` and
-            // `ir::exec`'s own `Const` evaluation use (GAP-1 Task 6 round 4,
-            // F4).
-            let resized =
-                crate::value::from_const_at_width(&reg.reset, reg.width.bits, reg.reset.signed);
-            let reset_cv = crate::checker::consteval::ConstVal {
-                bits: resized.bits,
-                width: reg.width.bits,
-                signed: reg.width.signed,
-            };
-            let reset_const = ctx.lower_const(&mut module, &reset_cv, crate::span::Span::default());
-            d_bits = ctx.push_mux_cell(
-                &mut module,
-                reset_sel,
-                reset_const,
-                d_bits,
-                crate::span::Span::default(),
-            );
-        }
-
         let clock_bits = ctx.resolve(&mut module, &reg.clock);
         assert_eq!(clock_bits.width(), 1, "a clock signal is always 1 bit");
-        module.cells.push(Cell {
-            kind: CellKind::Dff {
-                clock: clock_bits.nets[0],
-                edge: reg.edge,
-            },
-            pins: [("d", d_bits), ("q", q_bits)].into_iter().collect(),
-            span: crate::span::Span::default(),
-        });
+        let clock = clock_bits.nets[0];
+        let span = crate::span::Span::default();
+        let Some(reset) = &reg.reset_by else {
+            module.cells.push(Cell {
+                kind: CellKind::Dff {
+                    clock,
+                    edge: reg.edge,
+                },
+                pins: [("d", d_bits), ("q", q_bits)].into_iter().collect(),
+                span,
+            });
+            continue;
+        };
+        // `elaborate::module`'s `const_eval_wide(&reset_expr)` stores the
+        // reset value at the folded constant's OWN natural width and
+        // natural signedness, not the register's — so `reg q: signed[8] =
+        // -1` arrived here as the 1-bit constant `1`. Re-size it through
+        // the same sign-aware `from_const_at_width` `lower_expr_sized` and
+        // `ir::exec`'s own `Const` evaluation use (GAP-1 Task 6 round 4,
+        // F4).
+        let resized =
+            crate::value::from_const_at_width(&reg.reset, reg.width.bits, reg.reset.signed);
+        let reset_cv = crate::checker::consteval::ConstVal {
+            bits: resized.bits,
+            width: reg.width.bits,
+            signed: reg.width.signed,
+        };
+        let reset_sel = ctx.resolve(&mut module, &reset.signal);
+        if reset.is_async {
+            module.cells.push(Cell {
+                kind: CellKind::Adff {
+                    clock,
+                    edge: reg.edge,
+                    value: reset_cv,
+                },
+                pins: [("d", d_bits), ("q", q_bits), ("arst", reset_sel)]
+                    .into_iter()
+                    .collect(),
+                span,
+            });
+        } else {
+            let reset_const = ctx.lower_const(&mut module, &reset_cv, span);
+            let d_bits = ctx.push_mux_cell(&mut module, reset_sel, reset_const, d_bits, span);
+            module.cells.push(Cell {
+                kind: CellKind::Dff {
+                    clock,
+                    edge: reg.edge,
+                },
+                pins: [("d", d_bits), ("q", q_bits)].into_iter().collect(),
+                span,
+            });
+        }
     }
 
     // Memories take TWO passes. Pass A walks every writing process, which is

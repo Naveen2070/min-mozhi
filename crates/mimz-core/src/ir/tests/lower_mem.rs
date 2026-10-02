@@ -344,6 +344,7 @@ fn two_reg_rom_design() -> Design {
             },
             clock: "clk".into(),
             edge: Edge::Rise,
+            reset_by: None,
         });
     }
     design

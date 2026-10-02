@@ -140,6 +140,59 @@ fn a_constant_condition_over_two_signals_reads_the_taken_one() {
     assert_eq!(port("o").nets, port("a").nets);
 }
 
+/// `src` through the real pipeline, elaborating `top` (the file has more than
+/// one module), then `lower`.
+fn lower_top(src: &str, top: &str) -> Module {
+    let file = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+    crate::checker::check(std::slice::from_ref(&file)).expect("checks clean");
+    let design = crate::elaborate::elaborate_project(
+        std::slice::from_ref(&file),
+        Some(top),
+        &BTreeMap::new(),
+    )
+    .expect("elaborates");
+    lower(&design)
+}
+
+#[test]
+fn a_constant_taken_branch_never_lowers_a_dead_branch_that_names_nothing() {
+    // At `i == 0` the dead branch reads `s[-1].y`, an instance that does not
+    // exist. With no target width (a unary operand) `lower_if` used to lower
+    // both branches to size the constant and panicked resolving `s__-1_y`.
+    let module = lower_top(
+        "module Pass {\n  in x: bit\n  out y: bit\n  y = x\n}\n\
+         module Top {\n  in a: bits[4]\n  out o: bits[4]\n  repeat i: 0..4 {\n    \
+         let s[i] = Pass() { x: a[i] }\n    \
+         o[i] = !(if i == 0 { 0 } else { s[i - 1].y })\n  }\n}\n",
+        "Top",
+    );
+    assert_eq!(validate(&module), Vec::new());
+    // o[0] = !0 = 1, o[i] = !a[i - 1].
+    assert_eq!(
+        run(&module, &[("a", 0b0101, 4)], "o").bits,
+        CBits::Small(0b0101)
+    );
+    assert_eq!(
+        run(&module, &[("a", 0b1010, 4)], "o").bits,
+        CBits::Small(0b1011)
+    );
+}
+
+#[test]
+fn a_constant_taken_branch_still_takes_a_real_dead_branchs_width() {
+    // The checker types the `if` as both branches unified, so the `0` is
+    // 8 bits wide and `~` gives 0xFF, as in Verilog. Lowering only the taken
+    // branch would give the 1-bit `~0 = 1` instead.
+    let module = lower_valid(
+        "module M(K: int = 0) {\n  in a: bits[8]\n  out n: bits[8]\n  \
+         n = ~(if K == 0 { 0 } else { a })\n}\n",
+    );
+    assert_eq!(
+        run(&module, &[("a", 0x05, 8)], "n").bits,
+        CBits::Small(0xFF)
+    );
+}
+
 const NESTED_FNS: &str = "fn inner(a: bits[8], b: bits[8], k: bit) -> bits[8] {\n  let r = if k { a } else { b }\n  r\n}\nfn outer(a: bits[8], b: bits[8], s: bit) -> bits[8] {\n  let k = 0\n  inner(a, b, s)\n}\nmodule M {\n  in a: bits[8]\n  in b: bits[8]\n  in s: bit\n  out o: bits[8]\n  o = outer(a, b, s)\n}\n";
 
 #[test]

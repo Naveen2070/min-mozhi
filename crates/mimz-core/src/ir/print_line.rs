@@ -28,17 +28,24 @@ pub(super) fn contiguous_same_name(module: &Module, bits: &Bits) -> Option<Strin
 /// Formats one pin's `Bits` as `name[lo:hi]` when [`contiguous_same_name`]
 /// finds a shared name; falls back to a bracketed net-id list (`{3,4,7}`)
 /// for anything else, so the format never loses information even for a
-/// purely synthetic net group.
+/// purely synthetic net group. A signed pin gets a trailing `s`
+/// (`a[0:8]s`, `{3,4}s`): signedness changes what arithmetic computes.
 fn format_bits(module: &Module, bits: &Bits) -> String {
-    if bits.nets.is_empty() {
-        return "{}".to_string();
-    }
-    match contiguous_same_name(module, bits) {
-        Some(name) => format!("{}[0:{}]", name, bits.nets.len()),
-        None => {
-            let ids: Vec<String> = bits.nets.iter().map(|n| n.0.to_string()).collect();
-            format!("{{{}}}", ids.join(","))
+    let body = if bits.nets.is_empty() {
+        "{}".to_string()
+    } else {
+        match contiguous_same_name(module, bits) {
+            Some(name) => format!("{}[0:{}]", name, bits.nets.len()),
+            None => {
+                let ids: Vec<String> = bits.nets.iter().map(|n| n.0.to_string()).collect();
+                format!("{{{}}}", ids.join(","))
+            }
         }
+    };
+    if bits.signed {
+        format!("{body}s")
+    } else {
+        body
     }
 }
 
@@ -85,6 +92,11 @@ pub(super) fn cell_op_name(kind: &CellKind) -> String {
         CellKind::Concat => "$concat".to_string(),
         CellKind::Slice { lo, hi } => format!("$slice[{lo}:{hi}]"),
         CellKind::Dff { edge, .. } => format!("$dff[{edge:?}]"),
+        CellKind::Adff { edge, value, .. } => format!(
+            "$adff[{edge:?}:{}'d{}]",
+            value.width,
+            crate::bits::to_decimal_string(&value.bits)
+        ),
         CellKind::Mem { depth, .. } => format!("$mem[{depth}]"),
         CellKind::BlackBox { module_name } => format!("$blackbox[{module_name}]"),
         CellKind::Const { value } => format!(

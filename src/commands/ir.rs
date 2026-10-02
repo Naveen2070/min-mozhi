@@ -266,7 +266,7 @@ fn check_valid(m: &Module, what: &str, panic: bool) -> Result<(), ExitCode> {
     }
     eprintln!("error: internal compiler error: {what} IR fails validate");
     for e in &errs {
-        eprintln!("  {e:?}");
+        eprintln!("  {e}");
     }
     eprintln!("  = help: {INTERNAL_HELP}");
     Err(ExitCode::FAILURE)
