@@ -31,7 +31,7 @@ module ethiroli #(
     initial ethiroli_ennnnezhuththu = 0;
     initial ethiroli_niluvai = 0;
     initial anuppi_thotakkam = 0;
-    UartTx #(.CLKS_PER_BIT(CLKS_PER_BIT)) anuppi_nikazhvu (.clk(clk), .rst(rst), .start(anuppi_thotakkam), .data(ethiroli_ennnnezhuththu), .tx(anuppi_nikazhvu_tx), .busy(anuppi_nikazhvu_busy));
+    UartTx #(.CLKS_PER_BIT(CLKS_PER_BIT)) anuppi_nikazhvu (.clk(katikai), .rst(miittal), .start(anuppi_thotakkam), .data(ethiroli_ennnnezhuththu), .tx(anuppi_nikazhvu_tx), .busy(anuppi_nikazhvu_busy));
     wire [7:0] __mimz_sub_1;
     assign __mimz_sub_1 = (nakarvu >> 1);
     wire [14:0] __mimz_sub_2;

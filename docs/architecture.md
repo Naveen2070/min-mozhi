@@ -20,7 +20,7 @@
 > breakdown). Prior: 2026-09-01 (Phase 2 Step 0: promoted `elaborate`/`value`/
 > `comb`/S0xxx runtime-diag catalog from `mimz-sim` to `mimz-core`, 3-crate
 > boundary redrawn along the pure/impure split). Prior: 2026-08-22
-> (doc-code audit: 76 checker error codes
+> (doc-code audit: 77 checker error codes
 > (E0001–E0912/E0420, E1301–E1302); 35 test suites / 1318 passing tests;
 > error fixtures 120, goldens 88 `.v` (71 module + 17 `_tb.v`) + 1 `.vcd`,
 > 200 top-level example files across 5 folders (44 english, 44 tanglish,

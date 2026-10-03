@@ -190,7 +190,7 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          exactly one thing — no more (two drivers = a short), no less (an\n\
          undriven input floats).\n\n\
          Fix: connect each input exactly once at the `let`. Clock and reset\n\
-         connect implicitly by name and need not be listed.",
+         connect implicitly by name and need not be listed (see E0304).",
     ),
     (
         "E0303",
@@ -201,6 +201,16 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          named thing.\n\n\
          Fix: declare the wire/reg once OUTSIDE the loop (size it with the loop\n\
          bound, e.g. `wire acc: bits[N]`), and drive its bits inside.",
+    ),
+    (
+        "E0304",
+        "E0304 — omitted clock/reset has no same-named signal to connect to\n\n\
+         A sub-module's `clock`/`reset` may be left out of the `let`: it then\n\
+         connects to the parent's signal with the SAME name. If the parent has\n\
+         no such signal, the clock or reset would be left floating — the child\n\
+         would never tick, or never reset.\n\n\
+         Fix: connect it at the `let`, e.g. `let u = Pll() { clk_in: sysclk }`,\n\
+         or give the parent a clock/reset with the child's name.",
     ),
     // ----- E04xx: width & type rules -----
     (

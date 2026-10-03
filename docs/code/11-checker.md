@@ -138,6 +138,7 @@ tombstone row here. Each code is exercised two ways: in-process by
 | E0301 | module has regs but no `reset` declaration                                                                                                                                                                                                              | add `reset rst`                                                                                                                                                  |
 | E0302 | instance input unconnected, or connected twice                                                                                                                                                                                                          | connect every input exactly once; clock/reset connect by name                                                                                                    |
 | E0303 | declaration (port/`wire`/`reg`/`clock`/`reset`/`const`/`enum`/`on`) inside `repeat`                                                                                                                                                                     | declare once outside; `repeat` only generates hardware                                                                                                           |
+| E0304 | instance's omitted `clock`/`reset` has no same-named parent signal to connect to                                                                                                                                                                        | connect it at the `let` (`clk_in: sysclk`)                                                                                                                       |
 | E0401 | assignment/connection width mismatch (`=`, `<-`, init, conns)                                                                                                                                                                                           | `extend`/`trunc`/slice; `+` into same width teaches `+%`                                                                                                         |
 | E0402 | operand width mismatch (`+%` family, `& \| ^`, comparisons)                                                                                                                                                                                             | `extend` the narrow side                                                                                                                                         |
 | E0403 | kind mixing: signed↔bits, enums as numbers, clock/reset as data                                                                                                                                                                                         | the visible casts `signed()`/`unsigned()`                                                                                                                        |
@@ -228,11 +229,11 @@ Conversely, `W0001` (mixed-flavor file) IS a member of
 fixture like every other entry. The remaining warnings (`W0002`–`W0004`)
 come from the separate `lint` pass - see docs/code/06 section Warnings.
 
-Reverse index - which numbers exist in `ALL_CHECKER_CODES` today: 75
+Reverse index - which numbers exist in `ALL_CHECKER_CODES` today: 77
 entries, `E0001`–`E0004`, `E0101`–`E0111`, `E0201`–`E0202`,
-`E0301`–`E0303`, `E0401`–`E0419`, `E0501`–`E0505`, `E0601`–`E0602`,
+`E0301`–`E0304`, `E0401`–`E0420`, `E0501`–`E0505`, `E0601`–`E0602`,
 `E0701`–`E0705`, `E0801`–`E0813`, `E0901`–`E0903`, `E0906`–`E0907`,
-`E0909`–`E0912`, `E1301`–`E1302`, `W0001`.
+`E0909`–`E0912`, `E1301`–`E1302`.
 
 ## How the OR-arm binding intersection pass works (pass 6)
 
