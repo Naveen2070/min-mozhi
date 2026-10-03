@@ -157,6 +157,35 @@ impl<'a> Checker<'a> {
                  by name and may be omitted)",
             );
         }
+        // E0304 — an omitted clock/reset connects to the parent signal of
+        // the same name (spec/02 section 1.5), so that signal must exist.
+        for name in implicit.iter().filter(|n| !connected.contains(n)) {
+            let found = sc.names.get(*name);
+            if matches!(
+                found,
+                Some(Bind::In | Bind::Out | Bind::Wire | Bind::Reg | Bind::Clock | Bind::Reset)
+            ) {
+                continue;
+            }
+            let why = match found {
+                Some(b) => format!("`{name}` here is {}, not a signal", b.what()),
+                None => format!("this module has no signal named `{name}`"),
+            };
+            self.err(
+                file,
+                inst.name.span,
+                "E0304",
+                format!(
+                    "`{}`'s `{name}` is not connected and has no same-named signal to connect to",
+                    target.name().name
+                ),
+                format!(
+                    "{why} — connect it at the `let`, e.g. `{}() {{ {name}: <your clock or reset> }}` \
+                     (spec/02 section 1.5)",
+                    target.name().name
+                ),
+            );
+        }
     }
 
     pub(super) fn check_test(&mut self, file: usize, t: &'a TestDecl) {

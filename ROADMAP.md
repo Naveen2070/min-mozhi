@@ -62,7 +62,7 @@
 - `syntax thamizh` file-level directive
 - `mimz translate --order code|thamizh`
 - Tamil morphology helper for error messages (case suffixes on signal names)
-- Native-authored error catalog (`lang/messages.toml`) - 35 of the 76 checker codes localized (35 tanglish + tamil)
+- Native-authored error catalog (`lang/messages.toml`) - 35 of the 77 checker codes localized (35 tanglish + tamil)
 
 ### Phase 1.5 - Simulator ✅ (2026-06-16 → 2026-06-22)
 

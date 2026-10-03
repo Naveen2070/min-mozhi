@@ -1,0 +1,11 @@
+// expect: E0304
+extern module Pll {
+  clock clk_in
+  out clk_out: bit
+}
+module Top {
+  clock sysclk
+  out o: bit
+  let u = Pll() {}
+  o = u.clk_out
+}
