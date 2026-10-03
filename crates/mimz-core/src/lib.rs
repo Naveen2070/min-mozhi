@@ -22,6 +22,7 @@ pub fn nfc_normalize(s: &str) -> String {
 
 pub mod analysis;
 pub mod ast;
+pub mod backend;
 pub mod bits;
 pub mod checker;
 pub mod comb;

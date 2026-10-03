@@ -1913,6 +1913,55 @@ The extern clock/reset pin rule exposed BUG-80 for an unconnected extern
 clock (an internal error in `mimz ir`); fixed 2026-10-03 by checker code
 E0304.
 
+### Sub-gap (2026-10-03, OPEN — synthesis v1 phase 1 Task 3 review): limits of the IR Verilog backend
+
+Known limits of `mimz_core::backend::verilog` (record in
+`docs/log/2026-10-03.md`). Two review findings were fixed in the same task
+and are listed for the record:
+
+- ~~**Keyword list incomplete.**~~ **FIXED 2026-10-03** (Task 3 fix round 1).
+  `legal_name` escaped only some Verilog-2005 reserved words, so a port named
+  `table`, `event` or `edge` came out verbatim and Icarus and Yosys rejected
+  it. `VERILOG_KEYWORDS` is now the full IEEE 1364-2005 Annex B list. Pinned
+  by `legal_name_escapes_keywords_digits_and_duplicates`.
+- ~~**Extern names not romanized.**~~ **FIXED 2026-10-03** (Task 3 fix round
+  1). A black box's module, parameter and port names were written as-is, so
+  Tamil names gave non-ASCII Verilog that also did not match the AST
+  emitter's spelling. They are now romanized with
+  `emit_verilog::translit::romanize`, like the AST emitter. Pinned by
+  `an_extern_with_tamil_names_matches_the_ast_emitter`.
+
+Open:
+
+- **Alias detection by name only.** The IR keeps one `verilog_name` per black
+  box, so an explicit `= "alias"` is recognised only as `verilog_name !=
+module_name`. `extern module Foo = "Foo"` (alias equal to the name) is
+  therefore romanized too. No effect for ASCII names; a Tamil alias equal to
+  a Tamil module name is not legal Verilog anyway. Fix shape: an
+  `aliased: bool` on `CellKind::BlackBox` (IR text and spec/07 change).
+- **Romanized extern names are not de-duplicated.** Two distinct Tamil pin
+  or parameter names of one extern that romanize to the same ASCII (for
+  example `romanize("நீ") == romanize("னீ")`) give two identical `.pin()`
+  connections, which is invalid Verilog. Nor are they keyword-escaped. The
+  AST emitter's `transliterate` renames collisions with a `_2` suffix and
+  seeds its used set with the reserved words. Fix shape: share that
+  allocation with the backend. Rare; no corpus file has a Tamil extern.
+- **Zero-width edge cases unguarded.** `range(0)` underflows `w - 1`, and a
+  signed `widen` of empty `Bits` unwraps `nets.last()`. The checker should
+  make both unreachable; a `limitation` guard would turn them into a
+  diagnostic instead of a panic.
+- **Two observable differences from `ir::exec`** (constraints for the
+  Icarus-vs-`ir::exec` comparison, Task 4, not backend defects):
+  - An `Adff` is emitted `always @(edge clk or posedge arst)`, so the
+    Verilog resets the moment `arst` rises; `ir::exec` samples `arst` only
+    at the clock edge. The two agree when a harness drives inputs, takes one
+    full clock edge, then samples, and never samples before the first edge
+    (`arst` high at time 0 is an `x -> 1` posedge in Icarus).
+  - `ir::exec` ticks every register on one global clock and ignores `edge`;
+    in Verilog a `negedge` register fed by a `posedge` one sees the new value
+    within the same cycle. Designs that mix rising and falling registers are
+    left out of the comparison.
+
 ---
 
 ## GAP-2 (MEDIUM) - Simulator is 2-state with a whole-value unknown flag; no X/Z, no tri-state

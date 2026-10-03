@@ -503,6 +503,35 @@ for the session).
   simulation-only `extern module` warning: `mimz ir` does not simulate, an
   extern instance becomes a `BlackBox` cell.
 
+## Backends (`crates/mimz-core/src/backend/`)
+
+- `backend::verilog::emit(&ir::Module) -> Emitted { text, top, ports }` turns a
+  validated, optimized module into one flat Verilog-2005 module, one statement
+  per cell. Nothing relies on Verilog's implicit width or sign rules: operands
+  are widened explicitly with the signedness `ir::exec` uses (spec/07 section
+  6a). Registers are `reg ... = 0`; a `Mem` read of a non-power-of-two depth is
+  guarded so it returns `init` past the end; a `BlackBox` is instantiated with
+  `#(.PARAM(v))` under its `verilog_name`.
+- `backend::legal_name` makes every port, wire and register name legal ASCII
+  Verilog (Tamil romanized via `emit_verilog::translit`, keywords suffixed `_`,
+  a leading digit prefixed `_`, duplicates numbered). `Emitted::ports` maps each
+  IR port name to its Verilog name, so a later pin file can match by either.
+- It runs inside `ir::failure::catch(Stage::Emit, ..)`; `limitation` there (for
+  example a memory deeper than 2^20 words) is a `Limitation`, like in `Lower`.
+- A black box's module name, parameter names and port names are romanized like
+  the AST emitter does; an explicit `= "alias"` name is kept verbatim (the IR
+  records an alias as `verilog_name != module_name`). A `Not`/`And`/`Or`/`Xor`
+  whose output is wider than its operand is a `Limitation`.
+- Goldens: `tests/ir_verilog_golden.rs` (version banner line stripped).
+- Known limits (open sub-gap in `docs/audit/gaps.md`, GAP-1, 2026-10-03): an
+  alias equal to the module name is romanized too; romanized extern pin and
+  parameter names are not de-duplicated or keyword-escaped (the AST
+  emitter's `transliterate` does both); zero-width `range`/`widen` cases
+  panic instead of reporting a `limitation`. `ir::exec` samples an async
+  reset only at the clock edge and ignores register edges, so the
+  Icarus-vs-`ir::exec` comparison drives inputs, takes one full edge, then
+  samples, and leaves out designs that mix rising and falling registers.
+
 ## Operational commands (bin-only: `init` / `doctor` / `completions` / `check --watch` / `repl` / `eject`)
 
 These are **not** lib modules - they live in `src/commands/` (bin-only) and touch

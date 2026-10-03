@@ -22,8 +22,17 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1594 tests** as of 2026-10-03 (`cargo test --workspace`; the count is
+**1617 tests** as of 2026-10-03 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
++23 from the Verilog backend (synthesis v1 phase 1 Task 3, incl. fix round 1):
+17 unit tests in
+`backend/tests.rs` (signed and unsigned arithmetic widening, left shift,
+signed compare, mux polarity, sized constants, logic ops, async reset on a
+falling edge, memory read guards for power-of-two and other depths, ROM,
+parameterized and aliased externs, Tamil names, an extern with Tamil names
+matching the AST emitter, the bitwise output-width limitation, `legal_name`),
+`ir/tests/failure.rs`'s `a_limitation_while_emitting_is_a_limitation`, and the
+five `tests/ir_verilog_golden.rs` goldens. Previously, as of 2026-10-03 at 1594:
 +6 from completing the IR data a backend needs (synthesis v1 phase 1 Task 2):
 `lower_blackbox.rs`'s `an_extern_clock_input_is_a_blackbox_pin`,
 `an_extern_instance_carries_its_parameters` and
