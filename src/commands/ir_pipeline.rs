@@ -148,6 +148,7 @@ pub(crate) fn report(
         (FailureKind::Limitation, _) => "IR lowering does not support this design yet",
         (FailureKind::Internal, Stage::Lower) => "internal compiler error in IR lowering",
         (FailureKind::Internal, Stage::Optimize) => "internal compiler error in the IR optimizer",
+        (FailureKind::Internal, Stage::Emit) => "internal compiler error in the Verilog backend",
     };
     let help = match f.kind {
         FailureKind::Limitation => LIMITATION_HELP,

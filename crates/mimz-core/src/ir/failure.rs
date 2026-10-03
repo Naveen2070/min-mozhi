@@ -17,6 +17,8 @@ use std::sync::Once;
 pub enum Stage {
     Lower,
     Optimize,
+    /// A synthesis backend turning the IR into text.
+    Emit,
 }
 
 /// Root-cause class of a [`Failure`].
@@ -174,7 +176,7 @@ pub fn catch<T>(stage: Stage, want_backtrace: bool, f: impl FnOnce() -> T) -> Re
 }
 
 fn classify(stage: Stage, declared_limitation: bool) -> FailureKind {
-    if stage == Stage::Lower && declared_limitation {
+    if matches!(stage, Stage::Lower | Stage::Emit) && declared_limitation {
         FailureKind::Limitation
     } else {
         FailureKind::Internal
