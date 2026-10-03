@@ -22,7 +22,7 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1589 tests** as of 2026-10-02 (`cargo test --workspace`; the count is
+**1594 tests** as of 2026-10-03 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
 +6 from completing the IR data a backend needs (synthesis v1 phase 1 Task 2):
 `lower_blackbox.rs`'s `an_extern_clock_input_is_a_blackbox_pin`,

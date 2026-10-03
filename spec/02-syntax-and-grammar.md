@@ -286,7 +286,8 @@ module Top {
   values use `wire name: type = expr`; registers use `reg`. Known JS-instinct
   hazard - flagged for beginner testing.
 - A child's `clock`/`reset` with the same name as the parent's is connected
-  implicitly; different clocks must be wired explicitly.
+  implicitly; different clocks must be wired explicitly. An omitted
+  `clock`/`reset` with no same-named parent signal is **E0304**.
 
 ### 1.5b - Packages / namespacing (v0.2.19)
 

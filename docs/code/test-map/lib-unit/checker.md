@@ -179,12 +179,17 @@ clean, plus the `sync.*` arg-shape and domain/placement rules.
 
 ## checker/tests/insts.rs (4 tests)
 
-| Test                                                 | Locks in                                                                  |
-| ---------------------------------------------------- | ------------------------------------------------------------------------- |
-| `unconnected_input_is_e0302_naming_it`               | an unconnected instance input is E0302, naming it                         |
-| `several_unconnected_inputs_are_listed_in_one_error` | multiple unconnected inputs are listed together in one E0302              |
-| `clock_and_reset_ports_may_be_omitted`               | E0302 exempts clock/reset - implicit-by-name stays the emitter's contract |
-| `connecting_an_input_twice_is_e0302`                 | connecting the same instance input twice is E0302                         |
+| Test                                                  | Locks in                                                                  |
+| ----------------------------------------------------- | ------------------------------------------------------------------------- |
+| `unconnected_input_is_e0302_naming_it`                | an unconnected instance input is E0302, naming it                         |
+| `several_unconnected_inputs_are_listed_in_one_error`  | multiple unconnected inputs are listed together in one E0302              |
+| `clock_and_reset_ports_may_be_omitted`                | E0302 exempts clock/reset - implicit-by-name stays the emitter's contract |
+| `omitted_clock_with_no_parent_signal_is_e0304`        | omitted child clock with no same-named parent signal is E0304             |
+| `omitted_reset_with_no_parent_signal_is_e0304`        | omitted child reset with no same-named parent signal is E0304             |
+| `omitted_extern_clock_with_no_parent_signal_is_e0304` | same for an `extern module`'s clock (BUG-80's case)                       |
+| `omitted_clock_named_like_a_parent_const_is_e0304`    | a same-named parent `const` is not a signal - still E0304                 |
+| `explicitly_connected_clock_needs_no_parent_namesake` | an explicit `clk: sysclk` connection is never E0304                       |
+| `connecting_an_input_twice_is_e0302`                  | connecting the same instance input twice is E0302                         |
 
 ## checker/tests/enums.rs (38 tests)
 

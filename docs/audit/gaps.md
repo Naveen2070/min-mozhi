@@ -1909,8 +1909,9 @@ gains `verilog_name` and `params`; `CellKind::Mem` gains `edge`. Line format
 `a_falling_edge_memory_write_keeps_its_edge`; `ir/tests/parse_line.rs`'s
 `a_blackbox_with_a_verilog_name_and_params_round_trips` and
 `a_falling_edge_memory_round_trips`. Golden `tests/golden/ir/pll.ir` updated.
-The extern clock/reset pin rule exposes BUG-80 for an unconnected extern
-clock (now an internal error in `mimz ir`, previously ignored).
+The extern clock/reset pin rule exposed BUG-80 for an unconnected extern
+clock (an internal error in `mimz ir`); fixed 2026-10-03 by checker code
+E0304.
 
 ---
 
