@@ -178,6 +178,15 @@ fn resume_re_raises_the_original_payload() {
 }
 
 #[test]
+fn a_limitation_while_emitting_is_a_limitation() {
+    let f = catch(Stage::Emit, false, || -> u8 {
+        crate::ir::failure::limitation("deep memory".to_string())
+    })
+    .unwrap_err();
+    assert_eq!(f.kind, FailureKind::Limitation);
+}
+
+#[test]
 fn real_source_reaching_an_ir_limitation() {
     let f = lower_top(LIMITATION).unwrap_err();
     assert_eq!(f.kind, FailureKind::Limitation, "{}", f.message);

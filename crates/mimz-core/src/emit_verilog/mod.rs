@@ -36,7 +36,7 @@ mod kinds;
 mod module;
 mod self_determined;
 mod testbench;
-mod translit;
+pub(crate) mod translit;
 
 #[cfg(test)]
 mod tests;
