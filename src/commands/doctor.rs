@@ -153,6 +153,32 @@ pub(crate) fn doctor(dev: bool) -> ExitCode {
         "view `mimz sim -o out.vcd` waveforms; gtkwave.sourceforge.net",
     );
 
+    // ---- Synthesis toolchain (`mimz build`; optional) --------------------
+    heading("Synthesis toolchain (optional)");
+    let tc = mimz::build::toolchain::Toolchain::discover(None);
+    let tool_probe = |tool: &str, flag: &str| -> Option<String> {
+        tc.find(tool)?;
+        let out = tc.command(tool).arg(flag).output().ok()?;
+        let text = String::from_utf8_lossy(&out.stdout).into_owned()
+            + &String::from_utf8_lossy(&out.stderr);
+        text.lines()
+            .map(str::trim)
+            .find(|l| !l.is_empty())
+            .map(str::to_string)
+    };
+    const BUILD_HINT: &str = "`mimz build`; OSS CAD Suite, docs/BUILD.md";
+    failed |= optional("yosys", tool_probe("yosys", "-V"), BUILD_HINT);
+    failed |= optional(
+        "nextpnr-ice40",
+        tool_probe("nextpnr-ice40", "--version"),
+        BUILD_HINT,
+    );
+    failed |= optional(
+        "icepack",
+        tc.find("icepack").map(|p| p.display().to_string()),
+        BUILD_HINT,
+    );
+
     // ---- Environment -----------------------------------------------------
     heading("Environment");
     let tmp = std::env::temp_dir();

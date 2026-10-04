@@ -15,3 +15,4 @@ exercised by the integration tests below).
 | `unknown_lib_key_is_rejected`                                  | …and a typo inside `[lib]` is rejected the same way                                      |
 | `resolve_with_path_returns_config_location`                    | resolution reports WHICH `mimz.toml` won, so a `std` override resolves relative to it    |
 | `config_parses_top_level_extern_sim_and_compile_verilog_files` | the top-level `extern_sim` mode and `verilog_files` list parse                           |
+| `config_parses_the_build_table`                                | the `[build]` table (`board`, `pcf`, `toolchain`, `freq`) parses                         |
