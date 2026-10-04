@@ -24,6 +24,7 @@
 //! | [`checker`]     | mimz-core  | Names, consts, widths, drivers, exhaustiveness, clocks     |
 //! | [`emit_verilog`]| mimz-core  | AST → Verilog-2005 text (+ Tamil→ASCII transliteration + testbenches) |
 //! | [`ir`]          | mimz-core  | Typed netlist IR: lowering, validate, optimizer (`mimz ir`) |
+//! | [`backend`]     | mimz-core  | IR → structural Verilog-2005 for synthesis (`mimz build`) |
 //! | [`project`]     | mimz (shell) | File loading, NFC normalization, `import` resolution      |
 //!
 //! Tooling modules consume the pipeline above (they are not stages in it):
@@ -73,8 +74,8 @@ pub mod emulate;
 
 // mimz-core (pure): pipeline stages + tooling that never touch a filesystem.
 pub use mimz_core::{
-    analysis, ast, checker, diag, emit_verilog, explain, ir, lexer, lint, morph, parser, pretty,
-    span, stdlib, translate, version,
+    analysis, ast, backend, checker, diag, emit_verilog, explain, ir, lexer, lint, morph, parser,
+    pretty, span, stdlib, translate, version,
 };
 
 // mimz-sim (pure): the simulator module tree, plus its in-memory command

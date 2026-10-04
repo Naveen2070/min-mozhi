@@ -1,0 +1,23 @@
+// A 5-deep memory (not a power of two) read at addresses 5..7. An internal
+// counter writes entries 0..4 in turn, each with a value that is never the
+// init value (bit 7 set), so by tick 5 every in-range entry differs from the
+// init value and an unguarded out-of-range read cannot hide behind whichever
+// entry a synthesizer aliases it to.
+module OddMem {
+  clock clk
+  reset rst
+  in wd: bits[8]
+  in ra: bits[3]
+  out rd: bits[8]
+  mem m: bits[8][5] = 7
+  reg wcnt: bits[3] = 0
+  on rise(clk) {
+    m[wcnt] <- wd | 0b10000000
+    if wcnt == 4 {
+      wcnt <- 0
+    } else {
+      wcnt <- wcnt +% 1
+    }
+  }
+  rd = m[ra]
+}

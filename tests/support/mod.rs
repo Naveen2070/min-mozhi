@@ -93,6 +93,27 @@ pub(crate) fn require_iverilog() -> Option<PathBuf> {
     }
 }
 
+/// The OSS CAD Suite toolchain when `yosys`, `nextpnr-ice40` and `icepack`
+/// are found and Yosys's cell models are present (`MIMZ_OSS_CAD` or PATH);
+/// `None` to skip. Panics when `REQUIRE_YOSYS` is set but anything is missing.
+pub(crate) fn require_yosys() -> Option<mimz::build::toolchain::Toolchain> {
+    let tc = mimz::build::toolchain::Toolchain::discover(None);
+    let complete = ["yosys", "nextpnr-ice40", "icepack"]
+        .iter()
+        .all(|t| tc.find(t).is_some())
+        && tc.yosys_datdir().is_some();
+    if complete {
+        return Some(tc);
+    }
+    assert!(
+        std::env::var("REQUIRE_YOSYS").is_err(),
+        "REQUIRE_YOSYS is set but the OSS CAD Suite was not found \
+         (set MIMZ_OSS_CAD; docs/BUILD.md)"
+    );
+    eprintln!("skipping: OSS CAD Suite not found (set MIMZ_OSS_CAD; docs/BUILD.md)");
+    None
+}
+
 pub(crate) fn tool(bin: &Path, name: &str) -> Command {
     if bin.as_os_str().is_empty() {
         Command::new(name)

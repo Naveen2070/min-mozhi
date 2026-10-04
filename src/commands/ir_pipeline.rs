@@ -30,9 +30,6 @@ pub(crate) struct PipelineOpts<'a> {
 }
 
 /// A design lowered to the IR, with what a caller needs to report on it.
-// ponytail: `files`/`flavor`/`top` are read by `mimz build` (synthesis v1
-// phase 1, Task 6); drop this allow when it lands.
-#[allow(dead_code)]
 pub(crate) struct Lowered {
     pub(crate) files: Vec<LoadedFile>,
     pub(crate) flavor: Flavor,

@@ -22,9 +22,22 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1633 tests** as of 2026-10-04 (`cargo test --workspace`; the count is
+**1650 tests** as of 2026-10-04 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
-+15 from `mimz build`'s boards, pins and toolchain (synthesis v1 phase 1
++5 from the real-toolchain flow tests (synthesis v1 phase 1 Task 7): the new
+`tests/synth_flow.rs` (4, all skip without the OSS CAD Suite:
+`synthesized_netlists_match_ir_exec` runs Yosys's `synth_ice40` netlist of 7
+designs in Icarus with `cells_sim.v` against `ir::exec`,
+`mimz_build_produces_a_bitstream`, `building_twice_overwrites_the_work_folder`,
+`a_tool_failure_points_at_its_log`) and `tests/cli.rs`'s
+`build_accepts_a_work_folder_and_does_not_create_the_default` (`--work`).
+Previously, as of 2026-10-04 at 1645: +3 from `mimz build` fix round 1: `only_the_last_max_frequency_line_per_clock_survives_with_its_suffix_stripped`
+(`src/build/flow.rs`), `build_resolves_config_verilog_files_against_mimz_toml`
+and `build_rejects_a_zero_freq` (`tests/cli.rs`). Previously, as of 2026-10-04
+at 1642: +9 from `mimz build` (synthesis v1 phase 1 Task 6): 3 pure flow unit tests
+in `src/build/flow.rs` ([`lib-unit/build.md`](test-map/lib-unit/build.md)),
+`config_parses_the_build_table`, and 5 no-toolchain error tests in
+`tests/cli.rs` (`E1501`-`E1505`). Previously, as of 2026-10-04 at 1633: +15 from `mimz build`'s boards, pins and toolchain (synthesis v1 phase 1
 Task 5): unit tests in `src/build/{boards,pins,toolchain}.rs`, listed in
 [`lib-unit/build.md`](test-map/lib-unit/build.md). Previously, as of
 2026-10-04 at 1618: +1 from the whole-corpus IR-Verilog check (synthesis v1 phase 1 Task 4):
@@ -435,6 +448,7 @@ against a bare bundle-typed `fn` parameter inside that fn's own body
 | `tests/ir_validation.rs`                            |        6 | workspace integration (IR validation-rejection corpus)                                                    |
 | `tests/ir_verilog_diff.rs`                          |        1 | workspace integration (IR-emitted Verilog in Icarus vs `ir::exec`, every corpus module; skip list pinned) |
 | `tests/ir_verilog_golden.rs`                        |        5 | workspace integration (golden IR-emitted Verilog snapshots, banner line stripped)                         |
+| `tests/synth_flow.rs`                               |        4 | workspace integration (Yosys netlist in Icarus vs `ir::exec`; `mimz build` flow; needs the OSS CAD Suite) |
 | `tests/lab_lessons.rs`                              |        1 | workspace integration (lab content gate, site plan W6)                                                    |
 | `tests/lsp.rs`                                      |        1 | workspace integration (smoke)                                                                             |
 | `tests/morph.rs`                                    |       20 | workspace integration                                                                                     |

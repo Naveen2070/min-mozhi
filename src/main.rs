@@ -22,8 +22,9 @@ use mimz::project::{LoadError, LoadedFile};
 use mimz::{diag, project};
 
 use commands::{
-    EjectFlavor, check, compile, completions, doctor, eject_std, eval_file, explain_code, fmt_file,
-    init, ir_file, lint_file, repl, resolve_config, sim_file, test_file, translate_file,
+    BuildOpts, EjectFlavor, build_file, check, compile, completions, doctor, eject_std, eval_file,
+    explain_code, fmt_file, init, ir_file, lint_file, repl, resolve_config, sim_file, test_file,
+    translate_file,
 };
 
 /// Compiler for Min-Mozhi (மின்மொழி), a Tamil-rooted HDL.
@@ -369,6 +370,49 @@ enum Cmd {
         /// optimizer's round count to stderr
         #[arg(long)]
         stats: bool,
+        /// Error-message language: english | tanglish | tamil (default: the
+        /// flavor the file predominantly uses)
+        #[arg(short = 'l', long)]
+        lang: Option<CliLang>,
+    },
+    /// Synthesize a design into an iCE40 bitstream with Yosys + nextpnr + icepack.
+    ///
+    /// Emits the IR as Verilog, pins every top-level port (a `--board` preset
+    /// and/or a `--pcf` file), then runs the toolchain in `<source
+    /// dir>/build/<top>/` (or `--work <dir>`). See docs/BUILD.md for the
+    /// toolchain.
+    Build {
+        /// The .mimz file
+        file: PathBuf,
+        /// Bitstream path (default: `<top>.bin` next to the source)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Work folder for the generated Verilog, PCF and tool logs
+        /// (default: `<source dir>/build/<top>/`)
+        #[arg(long)]
+        work: Option<PathBuf>,
+        /// Which module to build (default: the file's only module)
+        #[arg(long)]
+        module: Option<String>,
+        /// Parameter overrides, comma-separated: `--param WIDTH=4`
+        #[arg(long, default_value = "")]
+        param: String,
+        /// Board preset (icebreaker); overrides mimz.toml `[build] board`
+        #[arg(long)]
+        board: Option<String>,
+        /// PCF pin file (`set_io <port> <pin>`); overrides `[build] pcf`
+        #[arg(long)]
+        pcf: Option<PathBuf>,
+        /// Clock target for nextpnr in MHz (default: the board's, else 12)
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
+        freq: Option<u32>,
+        /// Companion Verilog file for an `extern module` (repeatable; unions
+        /// with mimz.toml's `[compile] verilog_files`)
+        #[arg(long = "extern-src")]
+        extern_src: Vec<PathBuf>,
+        /// Crash with the original panic on an internal compiler error
+        #[arg(long)]
+        panic: bool,
         /// Error-message language: english | tanglish | tamil (default: the
         /// flavor the file predominantly uses)
         #[arg(short = 'l', long)]
@@ -733,6 +777,68 @@ fn main() -> ExitCode {
                 quiet,
                 debug,
             )
+        }
+        Cmd::Build {
+            file,
+            output,
+            work,
+            module,
+            param,
+            board,
+            pcf,
+            freq,
+            extern_src,
+            panic,
+            lang,
+        } => {
+            let (cfg, cfg_path) =
+                match mimz::config::Config::resolve_with_path(&file, config_path.as_deref()) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        return ExitCode::FAILURE;
+                    }
+                };
+            let lang_str = lang.map(|l| l.to_str().to_string()).or(cfg.lang);
+            if cfg.build.freq == Some(0) {
+                eprintln!("error: `[build] freq` must be at least 1 (MHz)");
+                eprintln!(
+                    "  = help: set a clock target such as `freq = 12` in mimz.toml, or pass --freq"
+                );
+                return ExitCode::FAILURE;
+            }
+            // Paths from mimz.toml (`[build] pcf`/`toolchain`, `[compile]
+            // verilog_files`) are relative to that file; flags stay
+            // cwd-relative.
+            let cfg_dir = cfg_path.as_deref().and_then(|p| p.parent());
+            let from_cfg = |p: &str| cfg_dir.map_or_else(|| PathBuf::from(p), |d| d.join(p));
+            let pcf = pcf.or_else(|| cfg.build.pcf.as_deref().map(from_cfg));
+            // Additive union, like `compile`: config's list plus the flags.
+            let mut verilog_files: Vec<PathBuf> = cfg
+                .compile
+                .verilog_files
+                .unwrap_or_default()
+                .iter()
+                .map(|p| from_cfg(p))
+                .collect();
+            verilog_files.extend(extern_src);
+            build_file(BuildOpts {
+                path: &file,
+                output,
+                work,
+                module,
+                param: &param,
+                board: board.or(cfg.build.board),
+                pcf,
+                freq: freq.or(cfg.build.freq),
+                toolchain: cfg.build.toolchain.as_deref().map(from_cfg),
+                verilog_files,
+                panic,
+                lang: lang_str.as_deref(),
+                config_path: config_path.as_deref(),
+                quiet,
+                debug,
+            })
         }
         Cmd::Test {
             file,
