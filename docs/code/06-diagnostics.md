@@ -69,6 +69,7 @@ will key off them - never renumber.
 | E11xx       | parser                  | below                            |
 | E12xx       | loader                  | below                            |
 | E1301–E1302 | checker (extern module) | [`11-checker.md`](11-checker.md) |
+| E15xx       | build (`mimz build`)    | below                            |
 | W000x       | lint / flavor mixing    | below (section Warnings)         |
 | S01xx–S05xx | simulator runtime       | [`13-tooling.md`](13-tooling.md) |
 
@@ -76,14 +77,15 @@ will key off them - never renumber.
 stage rejected your program, so you know what kind of mistake it is
 before reading the message:
 
-| Prefix                   | Stage that raised it | What it means for you                                                            |
-| ------------------------ | -------------------- | -------------------------------------------------------------------------------- |
-| `E00xx`–`E09xx`, `E13xx` | checker              | The text parsed fine; the _hardware rules_ were broken (widths, drivers, clocks) |
-| `E10xx`                  | lexer                | The characters could not be turned into words - a typo at the character level    |
-| `E11xx`                  | parser               | The words could not be arranged into a program - a typo at the grammar level     |
-| `E12xx`                  | loader               | An `import` could not be resolved to a file                                      |
-| `W000x`                  | lint / flavor        | Advisory only - the build still succeeds                                         |
-| `S0xxx`                  | simulator            | The program compiled; something went wrong while RUNNING it                      |
+| Prefix                   | Stage that raised it | What it means for you                                                                 |
+| ------------------------ | -------------------- | ------------------------------------------------------------------------------------- |
+| `E00xx`–`E09xx`, `E13xx` | checker              | The text parsed fine; the _hardware rules_ were broken (widths, drivers, clocks)      |
+| `E10xx`                  | lexer                | The characters could not be turned into words - a typo at the character level         |
+| `E11xx`                  | parser               | The words could not be arranged into a program - a typo at the grammar level          |
+| `E12xx`                  | loader               | An `import` could not be resolved to a file                                           |
+| `E15xx`                  | build                | An input to `mimz build` (board, pins, toolchain, extern Verilog) is missing or wrong |
+| `W000x`                  | lint / flavor        | Advisory only - the build still succeeds                                              |
+| `S0xxx`                  | simulator            | The program compiled; something went wrong while RUNNING it                           |
 
 `mimz-sim`'s own runtime diagnostics (`S01xx`–`S05xx`) are a SEPARATE
 catalog - fires at elaboration/execution time, after the checker has
@@ -92,34 +94,40 @@ the WASM playground's single-source path). Catalogued in
 [`13-tooling.md`](13-tooling.md#s0xxx--runtime-diagnostic-codes-r2-docsauditreview-2026-07-17md),
 not here - `ALL_SIM_CODES` lives in `crates/mimz-sim`, not `mimz-core`.
 
-| Code  | Meaning                                                                     |
-| ----- | --------------------------------------------------------------------------- |
-| E1001 | unterminated block comment                                                  |
-| E1002 | unterminated string                                                         |
-| E1003 | Tamil digits in a literal (ASCII digits are universal)                      |
-| E1004 | malformed number                                                            |
-| E1005 | reserved word used as a name                                                |
-| E1006 | division `/` does not exist (teaches the hardware cost)                     |
-| E1007 | modulo `%` does not exist (teaches `+%`/slicing)                            |
-| E1008 | unexpected character                                                        |
-| E1101 | expected-X-found-Y family (incl. terminators, missing `}`)                  |
-| E1102 | bad top-level item                                                          |
-| E1103 | enum needs at least one variant                                             |
-| E1104 | register has no reset value, or memory has no init value                    |
-| E1105 | `<-` outside an `on` block                                                  |
-| E1106 | `=` inside an `on` block                                                    |
-| E1107 | `test` block syntax (name, body statements)                                 |
-| E1108 | value-driving `if` without `else` (the latch lesson)                        |
-| E1109 | chained comparison                                                          |
-| E1110 | call errors (not a builtin, wrong arity)                                    |
-| E1111 | parameter/const type is not `int`/`bool`                                    |
-| E1112 | unknown `syntax` profile (only `thamizh` is valid)                          |
-| E1113 | nested too deeply to parse safely, or empty `()` on a tag-only enum variant |
-| E1114 | `sim` block syntax (`speed`/`bind` clause is malformed)                     |
-| E1115 | `??` applied to an already-optional type (`bits[8]??`)                      |
-| E1116 | unknown `sync.*` method (only `double_flop`/`pulse` exist)                  |
-| E1201 | imported file does not exist                                                |
-| E1202 | bad standard-library import (`std.<module>` shape / unknown module)         |
+| Code  | Meaning                                                                         |
+| ----- | ------------------------------------------------------------------------------- |
+| E1001 | unterminated block comment                                                      |
+| E1002 | unterminated string                                                             |
+| E1003 | Tamil digits in a literal (ASCII digits are universal)                          |
+| E1004 | malformed number                                                                |
+| E1005 | reserved word used as a name                                                    |
+| E1006 | division `/` does not exist (teaches the hardware cost)                         |
+| E1007 | modulo `%` does not exist (teaches `+%`/slicing)                                |
+| E1008 | unexpected character                                                            |
+| E1101 | expected-X-found-Y family (incl. terminators, missing `}`)                      |
+| E1102 | bad top-level item                                                              |
+| E1103 | enum needs at least one variant                                                 |
+| E1104 | register has no reset value, or memory has no init value                        |
+| E1105 | `<-` outside an `on` block                                                      |
+| E1106 | `=` inside an `on` block                                                        |
+| E1107 | `test` block syntax (name, body statements)                                     |
+| E1108 | value-driving `if` without `else` (the latch lesson)                            |
+| E1109 | chained comparison                                                              |
+| E1110 | call errors (not a builtin, wrong arity)                                        |
+| E1111 | parameter/const type is not `int`/`bool`                                        |
+| E1112 | unknown `syntax` profile (only `thamizh` is valid)                              |
+| E1113 | nested too deeply to parse safely, or empty `()` on a tag-only enum variant     |
+| E1114 | `sim` block syntax (`speed`/`bind` clause is malformed)                         |
+| E1115 | `??` applied to an already-optional type (`bits[8]??`)                          |
+| E1116 | unknown `sync.*` method (only `double_flop`/`pulse` exist)                      |
+| E1201 | imported file does not exist                                                    |
+| E1202 | bad standard-library import (`std.<module>` shape / unknown module)             |
+| E1501 | `mimz build`: a top-level port bit has no FPGA pin                              |
+| E1502 | `mimz build`: a PCF line names something that is not a top-level port           |
+| E1503 | `mimz build`: unknown `--board` preset                                          |
+| E1504 | `mimz build`: `yosys`, `nextpnr-ice40` or `icepack` not found                   |
+| E1505 | `mimz build`: an extern module has no Verilog source file                       |
+| E1506 | `mimz build`: PCF file unreadable or malformed line (not `set_io <name> <pin>`) |
 
 Grouping rule: E1101 deliberately covers the whole expected/found
 family - those messages share one translation shape; the codes that

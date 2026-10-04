@@ -3,6 +3,7 @@
 //! renderer and the `Cli`/`Cmd` clap types stay in `main.rs`. Split out of
 //! `main.rs` verbatim — no logic changed, only relocation + visibility glue.
 
+mod build;
 mod check;
 mod compile;
 mod completions;
@@ -21,6 +22,7 @@ mod sim;
 mod test;
 mod translate;
 
+pub(crate) use build::{BuildOpts, build_file};
 pub(crate) use check::check;
 pub(crate) use compile::compile;
 pub(crate) use completions::completions;

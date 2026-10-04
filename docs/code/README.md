@@ -94,9 +94,10 @@ both under the same `mimz::…` paths as before the split (see
 - `config` - reads per-project defaults from `mimz.toml` (CLI flags
   override it).
 - `build` (shell crate) - `mimz build`'s I/O half: board presets
-  (iCEBreaker), PCF pin files checked against the top module's ports, and
-  the OSS CAD Suite toolchain (suite root or PATH). The pure IR -> Verilog
-  backend it feeds is `mimz_core::backend`.
+  (iCEBreaker), PCF pin files checked against the top module's ports, the
+  OSS CAD Suite toolchain (suite root or PATH), and the Yosys -> nextpnr ->
+  icepack flow. The pure IR -> Verilog `backend` it feeds lives in
+  `mimz_core` (re-exported as `mimz::backend`).
 - `version` - holds the two version axes, the compiler (crate) version vs
   the language edition (`EDITION_HISTORY`), surfaced by `mimz --version`
   and the Verilog header (see `spec/06-editions.md`).

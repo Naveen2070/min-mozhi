@@ -978,6 +978,63 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          Fix: flatten the port to its scalar fields, matching however the\n\
          real Verilog module's actual port list is shaped.",
     ),
+    // ----- E15xx: `mimz build` (board, pins, toolchain, extern Verilog) -----
+    (
+        "E1501",
+        "E1501 — top-level port has no FPGA pin\n\n\
+         `mimz build` must tell the place-and-route tool which physical pin\n\
+         each top-level port sits on. Every bit of every port needs one: a\n\
+         vector port `leds: bits[5]` needs `leds[0]` .. `leds[4]`. The board\n\
+         preset (`--board icebreaker`) pins the ports whose names it knows\n\
+         (`clk`, `led1`, ...); the rest need a PCF line.\n\n\
+         Fix: rename the port to a preset name, or pass `--pcf pins.pcf` (or\n\
+         `[build] pcf` in mimz.toml) with a line `set_io <port> <pin>` per bit.",
+    ),
+    (
+        "E1502",
+        "E1502 — PCF names something that is not a top-level port\n\n\
+         A `set_io` line in your PCF names a signal that the top module does\n\
+         not have as a port (often a typo, or an internal wire). A PCF may\n\
+         name a port by its source name or by its Verilog name.\n\n\
+         Fix: correct the name to one of the top module's ports (the message\n\
+         lists them) or delete the line.",
+    ),
+    (
+        "E1503",
+        "E1503 — unknown board\n\n\
+         `--board` (or `[build] board`) names a preset `mimz build` does not\n\
+         have. The message lists the presets.\n\n\
+         Fix: pick a listed board, or leave `--board` out and give every pin\n\
+         in a PCF with `--pcf`.",
+    ),
+    (
+        "E1504",
+        "E1504 — synthesis tool not found\n\n\
+         `mimz build` runs three open-source tools: `yosys`, `nextpnr-ice40`\n\
+         and `icepack` (the OSS CAD Suite). One of them is not on PATH and\n\
+         not in the suite folder.\n\n\
+         Fix: install the OSS CAD Suite and either put its `bin` on PATH or\n\
+         point `MIMZ_OSS_CAD` (or `[build] toolchain`) at its folder. See\n\
+         docs/BUILD.md; `mimz doctor` shows what was found.",
+    ),
+    (
+        "E1505",
+        "E1505 — extern module has no Verilog source\n\n\
+         The design instantiates an `extern module`, a block whose real\n\
+         hardware lives in a hand-written Verilog file. Synthesis needs that\n\
+         file, and none was given (or a listed file does not exist).\n\n\
+         Fix: pass `--extern-src file.v` (repeatable) or list the file under\n\
+         `[compile] verilog_files` in mimz.toml.",
+    ),
+    (
+        "E1506",
+        "E1506 — PCF file unreadable or malformed line\n\n\
+         The PCF file could not be read, or a line in it is not\n\
+         `set_io [flags] <name> <pin>`. Blank lines and `#` comments are fine.\n\n\
+         Fix: check the `--pcf` path (`[build] pcf` in mimz.toml is relative to\n\
+         mimz.toml), and write each pin as `set_io <port> <pin>`, e.g.\n\
+         `set_io led 11` or `set_io leds[2] 25`.",
+    ),
     // ----- Wxxxx: lint warnings -----
     (
         "W0002",

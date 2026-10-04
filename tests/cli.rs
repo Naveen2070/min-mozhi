@@ -414,3 +414,186 @@ fn ir_stats_without_the_optimizer_has_one_column() {
         .expect("a Mux row");
     assert_eq!(mux.split_whitespace().collect::<Vec<_>>(), ["Mux", "1"]);
 }
+
+// ---- build (errors that need no toolchain) -------------------------------
+
+/// A unique temp dir for this process and `name`, holding `name` = `contents`.
+fn tempdir_with(name: &str, contents: &str) -> std::path::PathBuf {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static N: AtomicUsize = AtomicUsize::new(0);
+    let dir = std::env::temp_dir().join(format!(
+        "mimz_cli_{}_{}_{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::Relaxed),
+        name.replace(['.', '/', '\\'], "_")
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join(name), contents).unwrap();
+    dir
+}
+
+const BLINK_OUT_ONLY: &str = "module B {\n  out led: bit\n  led = 1\n}\n";
+
+#[test]
+fn build_reports_an_unpinned_port_with_its_code() {
+    let dir = tempdir_with(
+        "blink.mimz",
+        "module B {\n  clock clk\n  out led: bit\n  led = 1\n}\n",
+    );
+    let out = mimz()
+        .args([
+            "build",
+            dir.join("blink.mimz").to_str().unwrap(),
+            "--board",
+            "icebreaker",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("E1501") && err.contains("led"), "{err}");
+}
+
+#[test]
+fn build_reports_an_unknown_board() {
+    let dir = tempdir_with("blink.mimz", BLINK_OUT_ONLY);
+    let out = mimz()
+        .args([
+            "build",
+            dir.join("blink.mimz").to_str().unwrap(),
+            "--board",
+            "nope",
+        ])
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("E1503") && err.contains("icebreaker"), "{err}");
+}
+
+#[test]
+fn build_reports_a_pcf_name_that_is_not_a_port() {
+    let dir = tempdir_with("blink.mimz", BLINK_OUT_ONLY);
+    std::fs::write(dir.join("p.pcf"), "set_io ledd 11\n").unwrap();
+    let out = mimz()
+        .args([
+            "build",
+            dir.join("blink.mimz").to_str().unwrap(),
+            "--pcf",
+            dir.join("p.pcf").to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("E1502"));
+}
+
+#[test]
+fn build_reports_a_missing_toolchain() {
+    let dir = tempdir_with("blink.mimz", BLINK_OUT_ONLY);
+    std::fs::write(dir.join("p.pcf"), "set_io led 11\n").unwrap();
+    let out = mimz()
+        .args([
+            "build",
+            dir.join("blink.mimz").to_str().unwrap(),
+            "--pcf",
+            dir.join("p.pcf").to_str().unwrap(),
+        ])
+        .env("MIMZ_OSS_CAD", dir.join("no-suite-here"))
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("E1504") && err.contains("yosys"), "{err}");
+}
+
+#[test]
+fn build_accepts_a_work_folder_and_does_not_create_the_default() {
+    // Only proves clap accepts `--work` (tool discovery fails first, E1504);
+    // `tests/synth_flow.rs` proves the folder is actually used.
+    let dir = tempdir_with("blink.mimz", BLINK_OUT_ONLY);
+    std::fs::write(dir.join("p.pcf"), "set_io led 11\n").unwrap();
+    let work = dir.join("elsewhere");
+    let out = mimz()
+        .args([
+            "build",
+            dir.join("blink.mimz").to_str().unwrap(),
+            "--pcf",
+            dir.join("p.pcf").to_str().unwrap(),
+            "--work",
+            work.to_str().unwrap(),
+        ])
+        .env("MIMZ_OSS_CAD", dir.join("no-suite-here"))
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("E1504"), "{err}");
+    assert!(!dir.join("build").exists());
+}
+
+#[test]
+fn build_reports_an_extern_without_verilog() {
+    let src = std::fs::read_to_string(repo("tests/fixtures/extern/pll.mimz")).unwrap();
+    let dir = tempdir_with("pll.mimz", &src);
+    std::fs::write(
+        dir.join("p.pcf"),
+        "set_io sysclk 35\nset_io fast_clk 11\nset_io pll_ok 37\n",
+    )
+    .unwrap();
+    let out = mimz()
+        .args([
+            "build",
+            dir.join("pll.mimz").to_str().unwrap(),
+            "--pcf",
+            dir.join("p.pcf").to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("E1505") && err.contains("Pll"), "{err}");
+}
+
+/// `[compile] verilog_files` is relative to mimz.toml, not the cwd, and a
+/// relative `--pcf` stays cwd-relative (absolute here).
+#[test]
+fn build_resolves_config_verilog_files_against_mimz_toml() {
+    let src = std::fs::read_to_string(repo("tests/fixtures/extern/pll.mimz")).unwrap();
+    let dir = tempdir_with("mimz.toml", "[compile]\nverilog_files = [\"pll.v\"]\n");
+    std::fs::write(dir.join("pll.v"), "module Pll(); endmodule\n").unwrap();
+    std::fs::create_dir_all(dir.join("sub")).unwrap();
+    std::fs::write(dir.join("sub").join("pll.mimz"), src).unwrap();
+    std::fs::write(
+        dir.join("p.pcf"),
+        "set_io sysclk 35\nset_io fast_clk 11\nset_io pll_ok 37\n",
+    )
+    .unwrap();
+    let elsewhere = tempdir_with("other.txt", "");
+    let out = mimz()
+        .current_dir(&elsewhere)
+        .args([
+            "build",
+            dir.join("sub").join("pll.mimz").to_str().unwrap(),
+            "--pcf",
+            dir.join("p.pcf").to_str().unwrap(),
+        ])
+        .env("MIMZ_OSS_CAD", dir.join("no-suite-here"))
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("E1504") && !err.contains("E1505"), "{err}");
+}
+
+#[test]
+fn build_rejects_a_zero_freq() {
+    let dir = tempdir_with("blink.mimz", BLINK_OUT_ONLY);
+    let out = mimz()
+        .args([
+            "build",
+            dir.join("blink.mimz").to_str().unwrap(),
+            "--freq",
+            "0",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+}

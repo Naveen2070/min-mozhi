@@ -52,6 +52,23 @@ pub struct Config {
     /// Standard-library overrides (`mimz eject std` workflow).
     #[serde(default)]
     pub lib: LibConfig,
+    /// Defaults for `mimz build`.
+    #[serde(default)]
+    pub build: BuildConfig,
+}
+
+/// `[build]` — defaults for `mimz build` (flags win).
+#[derive(Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct BuildConfig {
+    /// Board preset (`icebreaker`).
+    pub board: Option<String>,
+    /// PCF file, relative to `mimz.toml`'s directory or absolute.
+    pub pcf: Option<String>,
+    /// OSS CAD Suite root (`MIMZ_OSS_CAD` wins over it).
+    pub toolchain: Option<String>,
+    /// Clock target for nextpnr, in MHz (default: the board's, else 12).
+    pub freq: Option<u32>,
 }
 
 /// `[compile]` — defaults for the compile subcommand.
@@ -166,6 +183,23 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn config_parses_the_build_table() {
+        let c: Config = toml::from_str(
+            "[build]\nboard = \"icebreaker\"\npcf = \"p.pcf\"\ntoolchain = \"C:/oss-cad-suite\"\nfreq = 24\n",
+        )
+        .unwrap();
+        assert_eq!(
+            c.build,
+            BuildConfig {
+                board: Some("icebreaker".into()),
+                pcf: Some("p.pcf".into()),
+                toolchain: Some("C:/oss-cad-suite".into()),
+                freq: Some(24),
+            }
+        );
+    }
 
     #[test]
     fn empty_config_is_all_defaults() {

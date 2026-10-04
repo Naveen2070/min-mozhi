@@ -145,6 +145,20 @@ cargo build --no-default-features   # proves the lib builds without lsp/bench (w
 The Icarus differential tests (`tests/icarus.rs`) need `iverilog`/`vvp` on PATH;
 set `REQUIRE_IVERILOG=1` to make them a hard failure instead of skipping.
 
+The synthesis tests (`tests/synth_flow.rs`: Yosys's netlist simulated in Icarus
+against `ir::exec`, and `mimz build` end to end) need the OSS CAD Suite. They
+skip when `yosys`, `nextpnr-ice40` and `icepack` are not found; set
+`REQUIRE_YOSYS=1` to make that a hard failure, and `MIMZ_OSS_CAD` to the suite
+root (or put its `bin` on PATH). They also need `iverilog`. Locally (PowerShell):
+
+```powershell
+$env:MIMZ_OSS_CAD='C:\oss-cad-suite'; $env:REQUIRE_YOSYS=1; $env:REQUIRE_IVERILOG=1
+cargo test --test synth_flow
+```
+
+The tests pass `mimz build --work <temp dir>`, so nothing is written inside the
+repository (the default work folder is `<source dir>/build/<top>/`).
+
 ---
 
 ## 5. WASM crate (`crates/mimz-wasm`)
