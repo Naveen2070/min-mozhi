@@ -103,6 +103,7 @@ flavors + **16** pure-Tamil twins.
 - [`lib-unit/lint.md`](lib-unit/lint.md) - Lint (5 tests)
 - [`lib-unit/explain.md`](lib-unit/explain.md) - Explain (3 tests)
 - [`lib-unit/translate.md`](lib-unit/translate.md) - Translate (10 tests)
+- [`lib-unit/build.md`](lib-unit/build.md) - Build: boards, pins, toolchain (15 tests)
 - [`lib-unit/config.md`](lib-unit/config.md) - Config (8 tests)
 - [`lib-unit/version.md`](lib-unit/version.md) - Version (3 tests)
 - [`lib-unit/morph.md`](lib-unit/morph.md) - Morph (14 tests)

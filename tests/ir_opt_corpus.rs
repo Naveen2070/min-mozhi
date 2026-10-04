@@ -6,70 +6,22 @@
 //! `EXPECTED_SKIPS`. See
 //! `docs/superpowers/specs/2026-09-27-ir-mux-simplify-design.local.md`.
 
+mod support;
+
 use mimz_core::ast::Dir;
 use mimz_core::ir::Module;
 use mimz_core::ir::exec::Executor;
 use mimz_core::ir::opt::optimize;
 use mimz_core::ir::validate::validate;
 use mimz_core::value::Val;
-use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+use support::ir_sim::{lowered_modules, mimz_files};
 
 /// Every file:module the corpus test skips, with why. A file that starts or
 /// stops lowering changes this list, so the test names it. Empty since
 /// 2026-10-02: lowering each module of a multi-module file as its own top
 /// (`alu.mimz`'s `Alu` and `Top`) left nothing unchecked (230 modules).
 const EXPECTED_SKIPS: &[&str] = &[];
-
-fn mimz_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    for entry in std::fs::read_dir(dir).unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            mimz_files(&path, out);
-        } else if path.extension().is_some_and(|e| e == "mimz") {
-            out.push(path);
-        }
-    }
-}
-
-/// Every module of the file at `path`, lowered as the top: `(name, Some(module))`
-/// when it lowers `validate`-clean, `(name, None)` otherwise. A file that does
-/// not load, check or name any module yields one `("<file>", None)` entry.
-fn lowered_modules(path: &Path) -> Vec<(String, Option<Module>)> {
-    let fail = || vec![("<file>".to_string(), None)];
-    let Ok(files) = mimz::project::load_project(path) else {
-        return fail();
-    };
-    let asts: Vec<mimz_core::ast::File> = files.iter().map(|f| f.ast.clone()).collect();
-    if mimz_core::checker::check(&asts).is_err() {
-        return fail();
-    }
-    // `load_project` always puts the entry file at `files[0]`.
-    let names: Vec<String> = asts[0]
-        .items
-        .iter()
-        .filter_map(|i| match i {
-            mimz_core::ast::TopItem::Module(m) => Some(m.name.name.clone()),
-            _ => None,
-        })
-        .collect();
-    if names.is_empty() {
-        return fail();
-    }
-    names
-        .into_iter()
-        .map(|name| {
-            let module =
-                mimz_core::elaborate::elaborate_project(&asts, Some(&name), &Default::default())
-                    .ok()
-                    .and_then(|design| {
-                        catch_unwind(AssertUnwindSafe(|| mimz_core::ir::lower(&design))).ok()
-                    })
-                    .filter(|m| validate(m).is_empty());
-            (name, module)
-        })
-        .collect()
-}
 
 /// Every output port's value after each of 4 ticks, with every input port
 /// driven by a deterministic per-tick pattern.
