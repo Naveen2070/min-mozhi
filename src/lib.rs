@@ -38,6 +38,7 @@
 //! | [`analysis`]    | mimz-core  | Editor symbol index + offset→definition / completion (LSP) |
 //! | [`sim`]         | mimz-sim   | Event-driven simulator + combinational evaluator (`mimz eval`/`sim`/`test`) |
 //! | [`config`]      | mimz (shell) | `mimz.toml` project defaults for CLI flags (CLI overrides) |
+//! | [`build`]       | mimz (shell) | `mimz build`'s I/O: board presets, PCF pins, OSS CAD Suite toolchain |
 //! | [`stdlib`]      | mimz-core  | Embedded standard library (`import std.*`) — catalog + eject |
 //! | [`version`]     | mimz-core  | The compiler-version vs language-edition axes + history    |
 //! | [`emulate`]     | mimz (shell) | Native hardware-emulation peripherals (LED/speaker/UART) bound in `sim{}` blocks (`mimz test --emulate`), feature-gated behind `hw-emulation` |
@@ -63,6 +64,7 @@ pub use mimz_core::REPEAT_BUDGET;
 
 // Shell-native modules: these touch the filesystem or are otherwise specific
 // to this crate (not pure enough to live in mimz-core/mimz-sim).
+pub mod build;
 pub mod config;
 pub mod project;
 
