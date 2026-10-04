@@ -1961,6 +1961,20 @@ module_name`. `extern module Foo = "Foo"` (alias equal to the name) is
     in Verilog a `negedge` register fed by a `posedge` one sees the new value
     within the same cycle. Designs that mix rising and falling registers are
     left out of the comparison.
+- **Task 4 outcome (2026-10-04, `tests/ir_verilog_diff.rs`).** 230 corpus
+  modules: 224 match `ir::exec` bit for bit over 8 ticks, 6 are skipped
+  (pinned in `EXPECTED_SKIPS`), 0 backend bugs. Skips:
+  - `dual_edge.mimz:DualEdge` in english, mixed, tamil and tanglish. A
+    rising register feeds a falling one: Icarus passes the value through in
+    the same tick (`q_t = d_t`) while `ir::exec` updates both at once and
+    lags one tick (`q_t = d_{t-1}`). Confirmed by the task review as the
+    edge-model difference above, not a backend bug.
+  - `tests/fixtures/extern/pll.mimz:ExternDemo` and
+    `pll_alias.mimz:AliasDemo`: a `BlackBox` cell, nothing to simulate.
+- **Deferred: DualEdge is skipped, not checked.** Because the mixed-edge
+  rule skips it before simulation, a future backend bug in rise-feeding-fall
+  ordering would go unnoticed. Fix shape: compare DualEdge's Icarus trace
+  with `ir::exec`'s trace shifted by one tick instead of skipping it.
 
 ---
 
