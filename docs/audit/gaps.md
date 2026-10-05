@@ -1933,23 +1933,50 @@ and are listed for the record:
 
 Open:
 
-- **Alias detection by name only.** The IR keeps one `verilog_name` per black
-  box, so an explicit `= "alias"` is recognised only as `verilog_name !=
-module_name`. `extern module Foo = "Foo"` (alias equal to the name) is
-  therefore romanized too. No effect for ASCII names; a Tamil alias equal to
-  a Tamil module name is not legal Verilog anyway. Fix shape: an
-  `aliased: bool` on `CellKind::BlackBox` (IR text and spec/07 change).
-- **Romanized extern names are not de-duplicated.** Two distinct Tamil pin
-  or parameter names of one extern that romanize to the same ASCII (for
-  example `romanize("நீ") == romanize("னீ")`) give two identical `.pin()`
-  connections, which is invalid Verilog. Nor are they keyword-escaped. The
-  AST emitter's `transliterate` renames collisions with a `_2` suffix and
-  seeds its used set with the reserved words. Fix shape: share that
-  allocation with the backend. Rare; no corpus file has a Tamil extern.
-- **Zero-width edge cases unguarded.** `range(0)` underflows `w - 1`, and a
-  signed `widen` of empty `Bits` unwraps `nets.last()`. The checker should
-  make both unreachable; a `limitation` guard would turn them into a
-  diagnostic instead of a panic.
+- ~~**Alias detection by name only.**~~ **FIXED 2026-10-05** (Task 9 batch A).
+  The IR recognised an explicit `= "alias"` only as `verilog_name !=
+module_name`, so `extern module Foo = "Foo"` was romanized too. Now
+  `CellKind::BlackBox` has `aliased: bool` (carried from the AST through
+  `ExternInstance`; IR text `=name` iff `aliased`; spec/07-ir.md v0.6). The
+  backend romanizes the module name iff `!aliased`. Pinned by
+  `an_alias_equal_to_the_module_name_is_still_aliased`,
+  `an_extern_without_an_alias_is_not_aliased` (`lower_blackbox.rs`),
+  `a_blackbox_alias_equal_to_its_name_round_trips_as_aliased`,
+  `an_unaliased_blackbox_prints_no_equals` (`parse_line.rs`) and
+  `an_aliased_name_is_kept_verbatim_and_an_unaliased_one_is_romanized`
+  (`backend/tests.rs`). A bad alias spelling is now the checker's E1303.
+- ~~**Romanized extern names are not de-duplicated.**~~ **FIXED 2026-10-05**
+  (Task 9 batch A, fix round 1). Two distinct Tamil pin or parameter names of
+  one extern that romanize alike (`romanize("நீ") == romanize("னீ")`) gave two
+  identical `.pin()` connections. The backend now draws an extern's module,
+  parameter and pin names from the AST emitter's own allocator
+  (`translit::NameAllocator`, which `transliterate` uses too). `mimz build`
+  goes further: it passes the project-wide name map
+  (`emit_verilog::project_names`, the same passes as `transliterate` without
+  mutating the ASTs) to `backend::verilog::emit_with_names`, so a project name
+  that already took a spelling (`a`) and an extern's clock/reset declaration
+  order give exactly `mimz compile`'s names. Pinned by
+  `tamil_extern_ports_that_romanize_alike_stay_distinct_like_the_ast_emitter`,
+  `tamil_extern_parameters_that_romanize_alike_stay_distinct`,
+  `project_names_make_the_backend_spell_externs_like_the_ast_emitter` and
+  `project_names_cover_a_clock_declared_before_a_colliding_port`. Plain
+  `emit(&Module)` (tests, no project) keeps the per-extern fallback: it
+  allocates among the extern's own names, declared ports first, clock/reset
+  last.
+- **OPEN: romanized names are not keyword-escaped (both emitters).** The
+  earlier "keyword-escaped" claim was wrong: the AST emitter's
+  `VERILOG_RESERVED` holds 24 words, so `romanize` can still produce a
+  keyword such as `or`, `not`, `nor`, `tri`, `task` or `time` for a Tamil
+  name. Left as is because fixing it changes `mimz compile` output for those
+  names. Fix shape: seed `NameAllocator` from the full
+  `backend::VERILOG_KEYWORDS`, then a golden check; needs the user's go-ahead.
+- ~~**Zero-width edge cases unguarded.**~~ **FIXED 2026-10-05** (Task 9
+  batch A). `range(0)` underflowed `w - 1` and a signed `widen` of empty
+  `Bits` unwrapped `nets.last()`. Both now report a `Limitation`. Pinned by
+  `a_zero_width_port_is_a_limitation` and
+  `sign_extending_an_empty_operand_is_a_limitation` (hand-written IR text:
+  `port out o[0:0]` and `a={}s` parse and validate-free emit, so the
+  guards are reachable from text).
 - **Two observable differences from `ir::exec`** (constraints for the
   Icarus-vs-`ir::exec` comparison, Task 4, not backend defects):
   - An `Adff` is emitted `always @(edge clk or posedge arst)`, so the
@@ -1971,10 +1998,17 @@ module_name`. `extern module Foo = "Foo"` (alias equal to the name) is
     edge-model difference above, not a backend bug.
   - `tests/fixtures/extern/pll.mimz:ExternDemo` and
     `pll_alias.mimz:AliasDemo`: a `BlackBox` cell, nothing to simulate.
-- **Deferred: DualEdge is skipped, not checked.** Because the mixed-edge
-  rule skips it before simulation, a future backend bug in rise-feeding-fall
-  ordering would go unnoticed. Fix shape: compare DualEdge's Icarus trace
-  with `ir::exec`'s trace shifted by one tick instead of skipping it.
+- **FIXED (2026-10-05, Task 9 batch B): DualEdge is checked, not skipped.**
+  `tests/ir_verilog_diff.rs` now compares DualEdge's Icarus trace with
+  `ir::exec`'s trace shifted by one tick (Icarus `q_t` equals exec
+  `q_(t+1)`, the 7 overlapping ticks), with `rst` high at tick 0 only (exec's
+  reset lags a tick the same way). The 4 entries left `EXPECTED_SKIPS`; any
+  other module mixing rising and falling registers is still skipped
+  automatically. Comparing unshifted or shifted by 2 fails the test.
+- **Async-reset timing after synthesis (2026-10-05, batch B).** Covered by
+  `tests/synth_flow.rs::an_async_reset_clears_the_synthesized_register_between_edges`:
+  on the synthesized ACounter, `arst` rising between edges clears `q` at once
+  (Verilog semantics, which `ir::exec` cannot express).
 
 ---
 

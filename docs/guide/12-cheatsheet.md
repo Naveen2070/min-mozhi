@@ -175,6 +175,7 @@ This is a selection, not the catalog. The full list is in
 | `E0912` | `??`'s right side does not match the left's `data` type          |
 | `E1301` | `extern module` name reused in this file                         |
 | `E1302` | `extern module` port is not a plain `bit`/`bits[N]`/`signed[N]`  |
+| `E1303` | `extern module` alias is not a Verilog identifier                |
 | `E1108` | value-driving `if` without an `else`                             |
 | `E1109` | bad chained comparison (mixed direction / `==`)                  |
 | `E1110` | built-in called with the wrong arity                             |

@@ -32,9 +32,24 @@ the VS Code extension. All commands run from the **repo root** unless noted.
 ### OSS CAD Suite (synthesis tools)
 
 One download bundles Yosys, nextpnr-ice40, IceStorm (`icepack`, `icetime`,
-`icebram`, `iceprog`), Icarus and GTKWave. Not needed to build or test the
-compiler today; needed for the synthesis path (`.mimz -> IR -> Yosys ->
-nextpnr -> bitstream`).
+`icebram`, `iceprog`), Icarus and GTKWave. Not needed to build the compiler or
+for its default tests; needed for `mimz build` (`.mimz -> IR -> Verilog ->
+Yosys -> nextpnr -> icepack -> bitstream`, guide chapter 11) and for the
+synthesis tests (section 4).
+
+How `mimz` finds the tools, first match wins:
+
+1. `MIMZ_OSS_CAD=<suite folder>` (environment variable);
+2. `[build] toolchain = "<suite folder>"` in `mimz.toml` (relative to that file);
+3. `yosys`, `nextpnr-ice40` and `icepack` on PATH.
+
+With a suite folder, each tool runs from `<suite>/bin` with `<suite>/bin` and
+`<suite>/lib` first on PATH **for that tool's process only**, so nothing is
+added to your global PATH (this avoids the Windows DLL clash below).
+`mimz doctor` shows what it found under "Synthesis toolchain (optional)".
+CI pins the suite release (`synth` job in `.github/workflows/ci.yml`,
+currently 2026-10-01); bump that date deliberately, since a new Yosys can
+change results.
 
 - **Linux / macOS:** unpack, then `source <suite>/environment`. Everything works
   as documented, including the default `synth_ice40` flow. CI uses Linux.
@@ -47,7 +62,8 @@ p->nCos`). Cause: the experimental `write_xaiger2` backend writes its binary
   checked (20260929, 20261001). `synth_ice40 -noabc` (Yosys's built-in LUT
   mapper) works and gives slightly larger netlists. `-nocarry` does not help.
   **Linux builds do not have this bug** - CI and any Linux machine (or WSL)
-  run the default flow. Recorded in `docs/log/2026-10-02.md`.
+  run the default flow. Recorded in `docs/log/2026-10-02.md`. `mimz build`
+  adds `-noabc` automatically on Windows and says so in its output.
 - **Windows - do not put `<suite>\bin` on PATH.** Its tools need DLLs from
   `<suite>\lib`, and other MinGW programs on PATH (e.g. `C:\iverilog\bin`)
   ship same-named, older DLLs, so `yosys` fails to start (`0xC0000135` /
@@ -157,7 +173,9 @@ cargo test --test synth_flow
 ```
 
 The tests pass `mimz build --work <temp dir>`, so nothing is written inside the
-repository (the default work folder is `<source dir>/build/<top>/`).
+repository (the default work folder is `<source dir>/build/<top>/`). In CI the
+`synth` job runs them on Linux with the pinned suite and `REQUIRE_YOSYS=1`,
+through Yosys's default ABC9 flow (Windows runs use `-noabc`).
 
 ---
 

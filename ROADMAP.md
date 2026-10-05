@@ -62,7 +62,7 @@
 - `syntax thamizh` file-level directive
 - `mimz translate --order code|thamizh`
 - Tamil morphology helper for error messages (case suffixes on signal names)
-- Native-authored error catalog (`lang/messages.toml`) - 35 of the 77 checker codes localized (35 tanglish + tamil)
+- Native-authored error catalog (`lang/messages.toml`) - 35 of the 78 checker codes localized (35 tanglish + tamil)
 
 ### Phase 1.5 - Simulator ✅ (2026-06-16 → 2026-06-22)
 
@@ -110,7 +110,7 @@ is the tracked source of truth for each item.
 - ✅ Hardware emulation `sim{}` blocks + `--emulate`/`--step` (2026-07-09)
 - Still open: channels tier (a), wire type inference, `pipeline(stages=N)`, `prove` blocks, G5 `secret`/`system_fault`
 
-**IR/synthesis track - IR + optimizer ✅, synthesis path next.** Backend strategy: Verilog-2005 + Yosys
+**IR/synthesis track - IR + optimizer ✅, synthesis v1 phase 1 ✅ (`mimz build`), phase 2 (Yosys JSON) next.** Backend strategy: Verilog-2005 + Yosys
 is the standing plan, not a placeholder - own logic synthesis is
 research-grade (Yosys/nextpnr represent a decade-plus of community
 engineering), so this track rides on that ecosystem for technology mapping
@@ -122,10 +122,12 @@ integration; it is not an alternative path toward an in-house synthesizer.
   replacement for it); contract in `spec/07-ir.md` (2026-10-02)
 - ✅ IR lowering from the elaborated design, validation, first optimizer
   passes, `mimz ir` (2026-09-04 → 2026-10-01)
-- Synthesis v1, two phases (Decision 2026-10-02): (1) IR → structural
-  Verilog-2005 → Yosys; (2) IR → Yosys JSON netlist, a second backend from
-  the same IR
-- Yosys + nextpnr flow scripted end-to-end (`mimz build blink.mimz --target ice40`)
+- Synthesis v1, two phases (Decision 2026-10-02): (1) ✅ IR → structural
+  Verilog-2005 → Yosys (2026-10-04); (2) IR → Yosys JSON netlist, a second
+  backend from the same IR
+- ✅ Yosys + nextpnr flow scripted end-to-end: `mimz build blink.mimz --board
+icebreaker` (2026-10-04; iCE40 bitstream, post-synthesis simulation
+  against `ir::exec` in CI; not yet run on a real board)
 - Study Yosys internals (techmapping, ABC interaction) to inform the above
 
 **Verilog FFI - ✅ Complete (2026-07-15, spec/02 section 1.5c).**

@@ -181,10 +181,16 @@ Synthesis v1 is two phases, both from the same IR (Decision 2026-10-02,
 `docs/log/2026-10-02.md`). Before either: the pre-prep plan
 (`docs/superpowers/plans/2026-10-02-synthesis-pre-prep.local.md`).
 
-- [ ] **v1 phase 1:** IR → structural Verilog-2005 emitter (one operation
+- [x] **v1 phase 1:** IR → structural Verilog-2005 emitter (one operation
       per line, explicit widths and signs), read by Yosys with
       `read_verilog`; output also simulated in Icarus as an independent
-      check of the IR → Verilog step
+      check of the IR → Verilog step - ✅ 2026-10-04:
+      `mimz build --board icebreaker` (`mimz_core::backend::verilog`,
+      `mimz::build`, E1501-E1506); every corpus module's emitted Verilog matches
+      `ir::exec` in Icarus (224/230, 6 pinned skips); 7 designs synthesized
+      by Yosys match `ir::exec` in Icarus with the iCE40 cell models; CI
+      `synth` job (Linux, pinned OSS CAD Suite 2026-10-01). Deferred review
+      items: phase 1 plan Task 9
 - [ ] **v1 phase 2:** IR → Yosys JSON netlist (`read_json`), a second
       backend from the same IR (not a conversion of the Verilog); exact
       bit-for-net mapping, no Verilog width/sign rules in between
@@ -203,8 +209,13 @@ Synthesis v1 is two phases, both from the same IR (Decision 2026-10-02,
   designs with more than one reset, `mimz sim` clears every register on
   any reset, while the IR and the synthesized hardware reset each register
   by its own module's reset.
-- [ ] Yosys + nextpnr flow scripted: `mimz build blink.mimz --target ice40`
-- [ ] Bitstream produced and verified **in CI/emulation** (no board owned yet - decision D8)
+- [x] Yosys + nextpnr flow scripted: `mimz build blink.mimz --target ice40` -
+      ✅ 2026-10-04 as `mimz build blink.mimz --board icebreaker` (a board
+      preset instead of a bare `--target`; `--pcf` for any iCE40 board)
+- [x] Bitstream produced and verified **in CI/emulation** (no board owned yet - decision D8) -
+      ✅ 2026-10-04: CI `synth` job builds a bitstream and checks Yosys's
+      netlist against `ir::exec` (post-synthesis simulation); not yet run
+      on real hardware
 - [ ] Hello-hardware demo on a real iCE40 board (iCEBreaker) - **when a board is acquired**
 
 ### Study track (feeds Phase 3)

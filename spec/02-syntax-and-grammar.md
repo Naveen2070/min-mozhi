@@ -1,6 +1,6 @@
 # Min-Mozhi - Syntax & Grammar
 
-> **Spec v0.2.31.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.32.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -371,7 +371,9 @@ externModule = "extern" "module" ident [ "=" string ]
 - `ident` is the name used on the mimz side (instantiation, `.` field
   access). The optional `= "string"` names the **real** Verilog module
   emitted into the instantiation - omit it when the mimz name already
-  matches the real module name exactly.
+  matches the real module name exactly. The alias must be a legal
+  Verilog-2005 identifier (letters, digits, `_`, `$`, not starting with a
+  digit, not a Verilog keyword), otherwise `E1303`.
 - The optional `doc: "..."` line (first thing in the body, before any
   port) is a human-readable note about the wrapped IP - carried through
   to nowhere mechanical yet, purely documentation for the reader.
@@ -1637,6 +1639,11 @@ because the `_` alternative provides no binding for `x`.
 
 ## Changelog
 
+- **v0.2.32 (2026-10-05):** **`extern module` alias must be a Verilog
+  identifier** (section 1.5c). `extern module X = "alias"` now requires
+  `alias` to be `[A-Za-z_][A-Za-z0-9_$]*` and not a Verilog-2005 keyword;
+  otherwise the new code **`E1303`**. Previously any string was accepted and
+  broke the generated Verilog.
 - **v0.2.31 (2026-08-22):** **`const if` condition scope corrected** (section
   1.9b). The condition accepts file-level/module-level `const`s, literals,
   and arithmetic/comparison only - parameter-based conditions are **not

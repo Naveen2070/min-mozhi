@@ -7,7 +7,7 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use mimz::backend::verilog::emit;
+use mimz::backend::verilog::emit_with_names;
 use mimz::ir::CellKind;
 use mimz::ir::failure::{self, Stage};
 
@@ -28,7 +28,10 @@ pub(crate) struct BuildOpts<'a> {
     pub(crate) param: &'a str,
     pub(crate) board: Option<String>,
     pub(crate) pcf: Option<PathBuf>,
+    /// `--freq`.
     pub(crate) freq: Option<u32>,
+    /// `[build] freq`.
+    pub(crate) cfg_freq: Option<u32>,
     /// `[build] toolchain`.
     pub(crate) toolchain: Option<PathBuf>,
     /// Companion Verilog for extern modules (`--extern-src` + config).
@@ -53,6 +56,25 @@ fn quoted(names: &[String]) -> String {
         .map(|n| format!("`{n}`"))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// Clock target in MHz: `--freq`, else `[build] freq`, else the board's, else 12.
+fn resolve_freq(flag: Option<u32>, cfg: Option<u32>, board: Option<u32>) -> u32 {
+    flag.or(cfg).or(board).unwrap_or(12)
+}
+
+/// `leds[2]` as the user wrote it, with the Verilog bit name in brackets
+/// when the two differ: `விளக்கு (villakku)`. `ports` is `(source, verilog, width)`.
+fn source_label(ports: &[(String, String, u32)], verilog_bit: &str) -> String {
+    for (src, v, _) in ports {
+        if let Some(rest) = verilog_bit.strip_prefix(v.as_str())
+            && (rest.is_empty() || rest.starts_with('['))
+            && src != v
+        {
+            return format!("{src}{rest} ({verilog_bit})");
+        }
+    }
+    verilog_bit.to_string()
 }
 
 pub(crate) fn build_file(o: BuildOpts) -> ExitCode {
@@ -88,7 +110,13 @@ pub(crate) fn build_file(o: BuildOpts) -> ExitCode {
         },
     };
 
-    let emitted = match failure::catch(Stage::Emit, o.debug || o.panic, || emit(&l.module)) {
+    // Spell an extern's names exactly as `mimz compile` does, so one companion
+    // `.v` serves both.
+    let asts: Vec<_> = l.files.iter().map(|f| f.ast.clone()).collect();
+    let names = mimz::emit_verilog::project_names(&asts);
+    let emitted = match failure::catch(Stage::Emit, o.debug || o.panic, || {
+        emit_with_names(&l.module, &names)
+    }) {
         Ok(e) => e,
         Err(f) => return report(f, &l.files, l.flavor, &l.top, o.panic, o.debug),
     };
@@ -166,6 +194,8 @@ pub(crate) fn build_file(o: BuildOpts) -> ExitCode {
     let pinned = match pins::resolve(board, &user, &ports) {
         Ok(p) => p,
         Err(PinError::Unpinned(names)) => {
+            // `pins::resolve` speaks Verilog names; show the source spelling too.
+            let names: Vec<String> = names.iter().map(|n| source_label(&ports, n)).collect();
             let preset = board
                 .map(|b| {
                     let n: Vec<&str> = b.pins.iter().map(|(n, _)| *n).collect();
@@ -219,7 +249,7 @@ pub(crate) fn build_file(o: BuildOpts) -> ExitCode {
         .clone()
         .unwrap_or_else(|| dir.join(format!("{}.bin", emitted.top)));
     let (device, package) = board.map_or(("up5k", "sg48"), |b| (b.device, b.package));
-    let freq_mhz = o.freq.or(board.map(|b| b.freq_mhz)).unwrap_or(12);
+    let freq_mhz = resolve_freq(o.freq, o.cfg_freq, board.map(|b| b.freq_mhz));
     let result = flow::run(
         &tc,
         &FlowInput {
@@ -258,9 +288,41 @@ pub(crate) fn build_file(o: BuildOpts) -> ExitCode {
             eprintln!("{tail}");
             ExitCode::FAILURE
         }
+        Err(FlowError::QuoteInPath(p)) => {
+            eprintln!("error: Verilog file path `{}` contains a `\"`", p.display());
+            eprintln!(
+                "  = help: Yosys's -p script cannot quote a path with a double quote; rename the file or its folder"
+            );
+            ExitCode::FAILURE
+        }
         Err(FlowError::Io(m)) => {
             eprintln!("error: {m}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_flag_beats_the_config_which_beats_the_board_which_beats_12() {
+        assert_eq!(resolve_freq(Some(50), Some(30), Some(12)), 50);
+        assert_eq!(resolve_freq(None, Some(30), Some(16)), 30);
+        assert_eq!(resolve_freq(None, None, Some(16)), 16);
+        assert_eq!(resolve_freq(None, None, None), 12);
+    }
+
+    #[test]
+    fn a_renamed_port_shows_both_spellings() {
+        let ports = vec![
+            ("விளக்கு".to_string(), "villakku".to_string(), 1),
+            ("leds".to_string(), "leds".to_string(), 3),
+            ("ப".to_string(), "pa".to_string(), 2),
+        ];
+        assert_eq!(source_label(&ports, "villakku"), "விளக்கு (villakku)");
+        assert_eq!(source_label(&ports, "pa[1]"), "ப[1] (pa[1])");
+        assert_eq!(source_label(&ports, "leds[2]"), "leds[2]");
     }
 }

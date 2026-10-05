@@ -6,6 +6,7 @@
 
 mod support;
 
+use mimz_core::backend::verilog::Emitted;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use support::ir_sim::*;
@@ -104,32 +105,7 @@ fn synthesized_netlists_match_ir_exec() {
     for (file, top, params, reset) in SUBSET {
         let m = lower(file, top, params);
         let e = mimz_core::backend::verilog::emit(&m);
-        let work = std::env::temp_dir().join(format!("mimz_synth_{top}_{}", std::process::id()));
-        std::fs::create_dir_all(&work).unwrap();
-        std::fs::write(work.join("top.v"), &e.text).unwrap();
-        let noabc = if mimz::build::toolchain::needs_noabc() {
-            " -noabc"
-        } else {
-            ""
-        };
-        let out = tc
-            .command("yosys")
-            .current_dir(&work)
-            .args([
-                "-q",
-                "-p",
-                &format!(
-                    "read_verilog top.v; synth_ice40{noabc} -top {}; write_verilog -noattr synth.v",
-                    e.top
-                ),
-            ])
-            .output()
-            .unwrap();
-        assert!(
-            out.status.success(),
-            "{file}:{top}: yosys failed\n{}",
-            String::from_utf8_lossy(&out.stderr)
-        );
+        let work = synthesize(&tc, &e, &format!("{file}:{top}"));
         let mut stim = stimulus(&m, 8);
         reset_once(&mut stim, *reset);
         let want = exec_trace(&m, &stim);
@@ -137,6 +113,8 @@ fn synthesized_netlists_match_ir_exec() {
         match *top {
             "Blinker" => assert_eq!(distinct(&want, "led"), 2, "Blinker led never toggles"),
             "Counter" => assert!(distinct(&want, "count") > 2, "Counter barely counts"),
+            "ACounter" => assert!(distinct(&want, "count") > 2, "ACounter barely counts"),
+            "Top" => assert!(distinct(&want, "total") > 2, "Top total barely moves"),
             _ => {}
         }
         let tb = testbench(&e, &clock_ports(&m), &stim);
@@ -154,16 +132,96 @@ fn synthesized_netlists_match_ir_exec() {
             got, want,
             "{file}:{top}: synthesized netlist differs from ir::exec"
         );
-        let _ = std::fs::remove_dir_all(&work);
+    }
+}
+
+/// A scratch folder removed on drop, so a failed assertion leaves nothing behind.
+struct Scratch(PathBuf);
+
+impl std::ops::Deref for Scratch {
+    type Target = std::path::Path;
+    fn deref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 
 /// A unique temp folder per test (process id + tag); never inside the repo.
-fn scratch(tag: &str) -> PathBuf {
+fn scratch(tag: &str) -> Scratch {
     let d = std::env::temp_dir().join(format!("mimz_{tag}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
-    d
+    Scratch(d)
+}
+
+/// Yosys `synth_ice40` over the emitted Verilog in a fresh scratch folder;
+/// `synth.v` lands there.
+fn synthesize(tc: &mimz::build::toolchain::Toolchain, e: &Emitted, label: &str) -> Scratch {
+    let work = scratch(&format!("synth_{}", file_safe(label)));
+    std::fs::write(work.join("top.v"), &e.text).unwrap();
+    let noabc = if mimz::build::toolchain::needs_noabc() {
+        " -noabc"
+    } else {
+        ""
+    };
+    let out = tc
+        .command("yosys")
+        .current_dir(&*work)
+        .args([
+            "-q",
+            "-p",
+            &format!(
+                "read_verilog top.v; synth_ice40{noabc} -top {}; write_verilog -noattr synth.v",
+                e.top
+            ),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{label}: yosys failed\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    work
+}
+
+/// `ir::exec` has no notion of time between edges, so an asynchronous reset's
+/// timing is pinned on the synthesized netlist itself, by the Verilog
+/// semantics: `q` equals the reset value right after `arst` rises, with no
+/// clock edge in between.
+#[test]
+fn an_async_reset_clears_the_synthesized_register_between_edges() {
+    let Some(tc) = support::require_yosys() else {
+        return;
+    };
+    let Some(iv) = support::require_iverilog() else {
+        return;
+    };
+    let cells = tc.yosys_datdir().unwrap().join("ice40").join("cells_sim.v");
+    let m = lower("examples/english/async_reset.mimz", "ACounter", &[]);
+    let e = mimz_core::backend::verilog::emit(&m);
+    let work = synthesize(&tc, &e, "async_reset_midtick");
+    let v = |ir: &str| e.ports.iter().find(|p| p.0 == ir).unwrap().1.clone();
+    let (clk, rst, count) = (v("clk"), v("rst"), v("count"));
+    let tb = format!(
+        "`timescale 1ns/1ps\nmodule diff_tb;\n  reg {clk} = 0;\n  reg {rst} = 0;\n  wire [7:0] {count};\n  {top} uut (.{clk}({clk}), .{rst}({rst}), .{count}({count}));\n  initial begin\n    #1 {rst} = 1; #1 {rst} = 0; #1;\n    repeat (3) begin {clk} = 1; #1 {clk} = 0; #1; end\n    $display(\"DIFF 0 {count}=%b\", {count});\n    {rst} = 1; #1;\n    $display(\"DIFF 1 {count}=%b\", {count});\n    $finish;\n  end\nendmodule\n",
+        top = e.top
+    );
+    let out = run_iverilog(
+        &iv,
+        "async_reset_midtick",
+        &[work.join("synth.v"), cells],
+        &tb,
+        &["-g2012", "-DNO_ICE40_DEFAULT_ASSIGNMENTS"],
+    );
+    let rows = icarus_trace(&out, &e);
+    assert_eq!(rows[0][0].1, 3, "counted three edges first: {out}");
+    assert_eq!(rows[1][0].1, 0, "no reset between edges: {out}");
 }
 
 fn build(args: &[&str]) -> std::process::Output {
@@ -211,7 +269,6 @@ fn mimz_build_produces_a_bitstream() {
         String::from_utf8_lossy(&out.stderr).contains("MHz")
             || String::from_utf8_lossy(&out.stdout).contains("MHz")
     );
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -223,7 +280,6 @@ fn building_twice_overwrites_the_work_folder() {
     assert!(build_blinker(&dir).status.success());
     assert!(build_blinker(&dir).status.success());
     assert!(std::fs::metadata(dir.join("out.bin")).unwrap().len() > 1000);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -261,5 +317,4 @@ fn a_tool_failure_points_at_its_log() {
         err.contains(work.to_str().unwrap()),
         "log path is not under --work: {err}"
     );
-    let _ = std::fs::remove_dir_all(&dir);
 }

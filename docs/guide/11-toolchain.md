@@ -141,6 +141,114 @@ goes to stderr, so the IR on stdout can still be piped or saved.
 The printed IR is for reading. It is not guaranteed to parse back
 unchanged.
 
+## Building for an FPGA: `mimz build`
+
+`mimz build` turns a design into a bitstream for a Lattice iCE40 FPGA. It
+lowers the design to the IR, optimizes it, writes it out as plain Verilog,
+pins every top-level port, and runs the open-source tools: Yosys
+(synthesis), nextpnr-ice40 (place and route) and icepack (bitstream).
+
+**Install first.** The tools come from the OSS CAD Suite; see
+[`../BUILD.md`](../BUILD.md#oss-cad-suite-synthesis-tools). Point `mimz` at it
+with `MIMZ_OSS_CAD=<suite folder>` (or put the suite on PATH, Linux/macOS), then
+check with `mimz doctor`, whose "Synthesis toolchain (optional)" section lists
+`yosys`, `nextpnr-ice40` and `icepack`.
+
+```text
+mimz build examples/english/blinker.mimz --board icebreaker --pcf pins.pcf
+mimz build design.mimz --board icebreaker --param LIMIT=6000000
+mimz build design.mimz --pcf pins.pcf --freq 24 -o out/design.bin
+mimz build top.mimz --board icebreaker --extern-src vendor/pll.v
+```
+
+### Pins
+
+Every bit of every top-level port needs an FPGA pin. Two sources, combined:
+
+- **A board preset** (`--board icebreaker`): a port whose name matches a
+  preset name gets that pin automatically.
+- **A PCF file** (`--pcf pins.pcf`): one `set_io <port> <pin>` per line. It
+  overrides the preset. A vector port is pinned bit by bit (`leds[0]`,
+  `leds[1]`, ...). A Tamil port can be named by its source name or by its
+  romanized Verilog name.
+
+iCEBreaker preset (1BitSquared iCEBreaker v1.0, iCE40 UP5K, 12 MHz clock):
+
+| Port name                | Pin                    | What                                         |
+| ------------------------ | ---------------------- | -------------------------------------------- |
+| `clk`                    | 35                     | 12 MHz oscillator                            |
+| `tx` / `rx`              | 9 / 6                  | USB serial                                   |
+| `btn_n`                  | 10                     | user button, **active-low** (0 when pressed) |
+| `led_r_n` / `led_g_n`    | 11 / 37                | red / green LED, **active-low** (0 = lit)    |
+| `btn1` / `btn2` / `btn3` | 20 / 19 / 18           | snap-off board buttons (1 when pressed)      |
+| `led1` ... `led5`        | 26 / 27 / 25 / 23 / 21 | snap-off board LEDs                          |
+
+**Reset and the button.** A `reset rst` line in Min-Mozhi is active-high:
+the registers reset while `rst` is 1. The iCEBreaker's main button `btn_n`
+reads 1 when it is _not_ pressed, so pinning `rst` to pin 10 holds the design
+in reset until you press the button. Pin `rst` to one of the snap-off buttons
+instead (`set_io rst 20` for BTN1). There is no active-low `reset` in this
+version, and a `reset` connection must be a plain signal name, so `btn_n`
+cannot be inverted on its way in. Likewise `led_r_n`/`led_g_n` light up when
+driven 0.
+
+A pin file for `examples/english/blinker.mimz` (ports `clk`, `rst`, `led`;
+`clk` comes from the preset):
+
+```text
+set_io led 26   # LED1 on the snap-off board
+set_io rst 20   # BTN1: reset while pressed
+```
+
+### What you get
+
+```text
+wrote design/Blinker.bin
+note: Windows Yosys build: synth_ice40 -noabc (docs/BUILD.md)
+clk: 79.74 MHz (PASS at 12.00 MHz)
+22   SB_CARRY
+24   SB_DFFSR
+24   SB_LUT4
+work folder: design/build/Blinker
+```
+
+- The bitstream goes to `<top>.bin` next to the source, or `-o <path>`.
+- The work folder (`<source dir>/build/<top>/`, or `--work <dir>`) holds the
+  emitted Verilog (`top.v`), the pin file nextpnr used (`pins.pcf`), the
+  synthesized netlist and every tool's log. Each build overwrites it.
+- The frequency line is nextpnr's result after routing: the fastest clock the
+  placed design can run at, and whether it meets the target (`--freq`, else
+  the board's clock, else 12 MHz).
+- On Windows, `synth_ice40` runs with `-noabc` because of a Yosys bug on that
+  platform; the netlist is slightly larger, otherwise the same.
+
+Flashing the board (`iceprog Blinker.bin`) is not part of `mimz build` yet.
+
+### When something is missing
+
+| Code    | Meaning                                                    |
+| ------- | ---------------------------------------------------------- |
+| `E1501` | a port bit has no pin (lists them, and the preset's names) |
+| `E1502` | a PCF name is not a top-level port (typo guard)            |
+| `E1503` | unknown `--board` (lists the presets)                      |
+| `E1504` | `yosys`, `nextpnr-ice40` or `icepack` not found            |
+| `E1505` | an `extern module` has no Verilog source (`--extern-src`)  |
+| `E1506` | the PCF file cannot be read, or a line is not `set_io`     |
+
+`mimz explain E1501` (and the others) gives the long form. If a tool itself
+fails, `mimz build` prints the tool's name, the path of its log and the log's
+last lines.
+
+### Limits (v1)
+
+- One FPGA family (iCE40) and one board preset (iCEBreaker).
+- Memories are built from logic, not the FPGA's block RAM.
+- No timing constraints beyond `--freq`.
+- Simulation and hardware can differ for a design with **more than one reset**
+  in a hierarchy: `mimz sim` resets every register when any reset is high
+  ([BUG-79](../audit/bugs/bug-71-80.md)); the built hardware resets each
+  register by its own reset.
+
 ## `mimz test` - run `test` blocks
 
 Run a file's `test "…" for M(…) { … }` blocks (`tick`/`expect`), reporting
@@ -266,7 +374,9 @@ mimz fmt messy.mimz -o clean.mimz    # write elsewhere, leave the input alone
 ## `mimz doctor` - toolchain health check
 
 Prints the compiler version, platform info, runs an in-memory compile smoke
-test, and probes for optional external tools (iverilog, verilator, gtkwave):
+test, and probes for optional external tools (iverilog, verilator, gtkwave,
+and the synthesis tools `yosys`, `nextpnr-ice40`, `icepack` for `mimz build`,
+found through `MIMZ_OSS_CAD` or PATH):
 
 ```text
 mimz doctor              # user toolchain
@@ -333,7 +443,16 @@ strict = true           # default fmt --strict
 
 [lib]
 std = "./vendor/std"    # override the embedded standard library (mimz eject std)
+
+[build]
+board = "icebreaker"    # default --board
+pcf = "pins.pcf"        # default --pcf (relative to this file)
+toolchain = "C:/oss-cad-suite"  # OSS CAD Suite root (MIMZ_OSS_CAD wins)
+freq = 12               # default --freq, in MHz
 ```
+
+Relative paths in `[build]` (and `[compile] verilog_files`) are read from the
+folder that holds `mimz.toml`, wherever you run `mimz` from.
 
 Every key is optional; an unknown key is reported as an error (a typo never
 silently does nothing).

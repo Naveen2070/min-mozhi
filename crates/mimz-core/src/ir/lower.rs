@@ -2607,6 +2607,7 @@ pub fn lower(design: &Design) -> Module {
             kind: CellKind::BlackBox {
                 module_name: ext.module_name.clone(),
                 verilog_name: ext.verilog_name.clone(),
+                aliased: ext.aliased,
                 params: ext.params.clone(),
             },
             pins,

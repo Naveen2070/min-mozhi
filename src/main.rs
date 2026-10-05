@@ -830,7 +830,9 @@ fn main() -> ExitCode {
                 param: &param,
                 board: board.or(cfg.build.board),
                 pcf,
-                freq: freq.or(cfg.build.freq),
+                // Observable only with tools; `resolve_freq` is unit tested.
+                freq,
+                cfg_freq: cfg.build.freq,
                 toolchain: cfg.build.toolchain.as_deref().map(from_cfg),
                 verilog_files,
                 panic,

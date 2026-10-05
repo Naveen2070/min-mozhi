@@ -1,4 +1,4 @@
-# Unit: checker (`crates/mimz-core/src/checker/tests/`, 286 tests)
+# Unit: checker (`crates/mimz-core/src/checker/tests/`, 293 tests)
 
 > Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
 
@@ -22,6 +22,9 @@ before, just organized by file and given a row if it lacked one.
 | `clog2_in_a_width_position_is_clean`                                   | `clog2(N)` used in a width position checks clean                                                   |
 | `clog2_of_a_module_const_is_clean`                                     | `clog2` of a module-level `const` checks clean                                                     |
 | `clog2_of_zero_is_e0202`                                               | `clog2(0)` is E0202 (undefined - no width represents zero values)                                  |
+| `clog2_of_param_port_width_is_e0420`                                   | `clog2(PARAM)` sizing a port is E0420 (Verilog-2005 port-list scoping, GAP-21)                     |
+| `clog2_of_const_port_width_still_passes`                               | `clog2` of a `const` sizing a port still checks clean                                              |
+| `clog2_of_param_body_wire_passes`                                      | `clog2(PARAM)` sizing a body `wire` (not a port) checks clean                                      |
 | `clog2_in_a_runtime_value_position_is_e0407`                           | `clog2` used in a runtime (non-width) value position is E0407                                      |
 | `same_name_module_in_different_files_is_not_an_error_until_referenced` | packages/namespacing: cross-file name collisions are legal until referenced (spec/02 section 1.5b) |
 | `ambiguous_bare_module_reference_is_e0110`                             | a bare module reference that's ambiguous across imports is E0110                                   |
@@ -341,44 +344,46 @@ Array-typed params/literals/indices, `extern module`, and structural
 (shape-based, not nominal) bundle compatibility across drives/fn
 args-returns/port connections.
 
-| Test                                                                  | Locks in                                                                                                |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `unreachable_code_after_return_is_e0812`                              | a statement after `return` (not the tail) is unreachable - E0812                                        |
-| `return_as_last_statement_before_tail_is_not_e0812`                   | `return` immediately before the tail expression is NOT flagged unreachable (no code follows it)         |
-| `fn_loop_body_return_followed_by_more_code_is_unreachable`            | code after `return` inside a `loop` body is still E0812                                                 |
-| `fn_loop_after_return_in_sibling_branch_is_not_flagged`               | code after an `if` branch's `return` in a SIBLING branch is not falsely flagged                         |
-| `array_param_with_bundle_element_type_is_e0411`                       | an array param whose element type is a bundle is E0411                                                  |
-| `array_param_with_zero_length_is_e0412`                               | a zero-length array param is E0412                                                                      |
-| `array_literal_infers_its_own_type`                                   | an array literal infers its own element type and length                                                 |
-| `array_literal_with_mismatched_element_widths_is_e0414`               | an array literal with mismatched element widths is E0414                                                |
-| `array_literal_argument_length_mismatch_is_e0413`                     | an array literal argument with the wrong length is E0413                                                |
-| `array_param_forwarded_by_name_with_matching_type_is_accepted`        | forwarding an array param by name with a matching type is accepted                                      |
-| `array_param_forwarded_by_name_with_mismatched_length_is_rejected`    | forwarding an array param by name with a mismatched length is rejected                                  |
-| `constant_array_index_out_of_range_is_e0415`                          | a compile-time-constant array index past the length is E0415                                            |
-| `runtime_array_index_is_accepted`                                     | a runtime (non-constant) array index is accepted - only constant indices are range-checked              |
-| `indexing_an_array_literal_directly_is_e0419`                         | indexing a bare array literal (`[1,2,3][0]`, no named binding) is E0419                                 |
-| `indexing_a_named_array_still_works_after_e0419`                      | …while indexing a NAMED array still works - the restriction is literals-only                            |
-| `array_typed_module_port_is_e0416`                                    | an array-typed module port is E0416 (arrays aren't a port type)                                         |
-| `array_typed_wire_is_e0416`                                           | an array-typed `wire` is E0416                                                                          |
-| `array_typed_output_with_constant_indexed_drive_is_e0416_not_a_panic` | an array-typed output driven by a constant index is E0416, not a panic (regression)                     |
-| `extern_module_duplicate_in_same_file_is_e1301`                       | two `extern module`s with the same name in one file is E1301                                            |
-| `extern_module_bundle_typed_port_is_e1302`                            | a bundle-typed port on an `extern module` is E1302 (extern ports must be scalar)                        |
-| `extern_module_array_typed_port_is_e1302`                             | an array-typed port on an `extern module` is E1302                                                      |
-| `extern_module_scalar_ports_check_clean`                              | an `extern module` with only scalar ports checks clean                                                  |
-| `extern_instantiation_checks_clean_with_correct_connections`          | instantiating an `extern module` with correct port connections checks clean                             |
-| `extern_instantiation_missing_input_connection_is_reported`           | instantiating an `extern module` with a missing input connection is reported (E0302)                    |
-| `extern_instantiation_unknown_port_is_reported`                       | connecting an unknown port on an `extern module` instance is reported                                   |
-| `extern_instantiation_wrong_width_connection_is_e0401`                | connecting an `extern module` port at the wrong width is E0401                                          |
-| `structurally_compatible_bundle_wire_binding_checks_clean`            | a wire bound to a structurally (not nominally) compatible bundle checks clean                           |
-| `structurally_compatible_fn_arg_checks_clean`                         | a `fn` argument passed a structurally compatible bundle checks clean                                    |
-| `wire_binding_bundle_missing_field_is_e0910`                          | a wire's bundle initializer missing a required field is E0910                                           |
-| `structurally_compatible_fn_return_checks_clean`                      | a `fn` returning a structurally compatible bundle checks clean                                          |
-| `fn_return_bundle_missing_field_is_e0910`                             | a `fn` bundle-tail return missing a required field is E0910                                             |
-| `fn_return_same_name_bundle_regression_still_e0804`                   | two same-named-but-different bundle types on a `fn` return stays E0804, not silently structural-matched |
-| `fn_return_bundle_shared_field_wrong_width_is_e0804`                  | a `fn` bundle return with a shared field at the wrong width is E0804                                    |
-| `structurally_compatible_bundle_port_connection_checks_clean`         | a module port connection with a structurally compatible bundle checks clean                             |
-| `port_connection_bundle_missing_field_is_e0910`                       | a port connection's bundle argument missing a required field is E0910                                   |
-| `port_connection_bundle_shared_field_wrong_width_is_e0401`            | a port connection's bundle argument with a shared field at the wrong width is E0401                     |
-| `structural_match_composes_across_fn_return_and_port_connection`      | structural bundle matching composes across a `fn` return feeding a port connection                      |
-| `drive_bundle_zero_required_fields_always_compatible`                 | a bundle type with zero required fields is always structurally compatible (trivial case)                |
-| `matched_ty_same_shaped_bundle_equality_passes`                       | two identically-shaped bundle types compare as matched via structural equality                          |
+| Test                                                                  | Locks in                                                                                                       |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `unreachable_code_after_return_is_e0812`                              | a statement after `return` (not the tail) is unreachable - E0812                                               |
+| `return_as_last_statement_before_tail_is_not_e0812`                   | `return` immediately before the tail expression is NOT flagged unreachable (no code follows it)                |
+| `fn_loop_body_return_followed_by_more_code_is_unreachable`            | code after `return` inside a `loop` body is still E0812                                                        |
+| `fn_loop_after_return_in_sibling_branch_is_not_flagged`               | code after an `if` branch's `return` in a SIBLING branch is not falsely flagged                                |
+| `array_param_with_bundle_element_type_is_e0411`                       | an array param whose element type is a bundle is E0411                                                         |
+| `array_param_with_zero_length_is_e0412`                               | a zero-length array param is E0412                                                                             |
+| `array_literal_infers_its_own_type`                                   | an array literal infers its own element type and length                                                        |
+| `array_literal_with_mismatched_element_widths_is_e0414`               | an array literal with mismatched element widths is E0414                                                       |
+| `array_literal_argument_length_mismatch_is_e0413`                     | an array literal argument with the wrong length is E0413                                                       |
+| `array_param_forwarded_by_name_with_matching_type_is_accepted`        | forwarding an array param by name with a matching type is accepted                                             |
+| `array_param_forwarded_by_name_with_mismatched_length_is_rejected`    | forwarding an array param by name with a mismatched length is rejected                                         |
+| `constant_array_index_out_of_range_is_e0415`                          | a compile-time-constant array index past the length is E0415                                                   |
+| `runtime_array_index_is_accepted`                                     | a runtime (non-constant) array index is accepted - only constant indices are range-checked                     |
+| `indexing_an_array_literal_directly_is_e0419`                         | indexing a bare array literal (`[1,2,3][0]`, no named binding) is E0419                                        |
+| `indexing_a_named_array_still_works_after_e0419`                      | …while indexing a NAMED array still works - the restriction is literals-only                                   |
+| `array_typed_module_port_is_e0416`                                    | an array-typed module port is E0416 (arrays aren't a port type)                                                |
+| `array_typed_wire_is_e0416`                                           | an array-typed `wire` is E0416                                                                                 |
+| `array_typed_output_with_constant_indexed_drive_is_e0416_not_a_panic` | an array-typed output driven by a constant index is E0416, not a panic (regression)                            |
+| `extern_module_duplicate_in_same_file_is_e1301`                       | two `extern module`s with the same name in one file is E1301                                                   |
+| `extern_module_bundle_typed_port_is_e1302`                            | a bundle-typed port on an `extern module` is E1302 (extern ports must be scalar)                               |
+| `an_extern_alias_that_is_not_a_verilog_identifier_is_e1303`           | an `extern module` alias with a space, `]`, a leading digit or a Verilog keyword is E1303, at the alias string |
+| `a_legal_verilog_identifier_alias_checks_clean`                       | a legal alias (`PLL_HARD_IP_v2`) checks clean                                                                  |
+| `extern_module_array_typed_port_is_e1302`                             | an array-typed port on an `extern module` is E1302                                                             |
+| `extern_module_scalar_ports_check_clean`                              | an `extern module` with only scalar ports checks clean                                                         |
+| `extern_instantiation_checks_clean_with_correct_connections`          | instantiating an `extern module` with correct port connections checks clean                                    |
+| `extern_instantiation_missing_input_connection_is_reported`           | instantiating an `extern module` with a missing input connection is reported (E0302)                           |
+| `extern_instantiation_unknown_port_is_reported`                       | connecting an unknown port on an `extern module` instance is reported                                          |
+| `extern_instantiation_wrong_width_connection_is_e0401`                | connecting an `extern module` port at the wrong width is E0401                                                 |
+| `structurally_compatible_bundle_wire_binding_checks_clean`            | a wire bound to a structurally (not nominally) compatible bundle checks clean                                  |
+| `structurally_compatible_fn_arg_checks_clean`                         | a `fn` argument passed a structurally compatible bundle checks clean                                           |
+| `wire_binding_bundle_missing_field_is_e0910`                          | a wire's bundle initializer missing a required field is E0910                                                  |
+| `structurally_compatible_fn_return_checks_clean`                      | a `fn` returning a structurally compatible bundle checks clean                                                 |
+| `fn_return_bundle_missing_field_is_e0910`                             | a `fn` bundle-tail return missing a required field is E0910                                                    |
+| `fn_return_same_name_bundle_regression_still_e0804`                   | two same-named-but-different bundle types on a `fn` return stays E0804, not silently structural-matched        |
+| `fn_return_bundle_shared_field_wrong_width_is_e0804`                  | a `fn` bundle return with a shared field at the wrong width is E0804                                           |
+| `structurally_compatible_bundle_port_connection_checks_clean`         | a module port connection with a structurally compatible bundle checks clean                                    |
+| `port_connection_bundle_missing_field_is_e0910`                       | a port connection's bundle argument missing a required field is E0910                                          |
+| `port_connection_bundle_shared_field_wrong_width_is_e0401`            | a port connection's bundle argument with a shared field at the wrong width is E0401                            |
+| `structural_match_composes_across_fn_return_and_port_connection`      | structural bundle matching composes across a `fn` return feeding a port connection                             |
+| `drive_bundle_zero_required_fields_always_compatible`                 | a bundle type with zero required fields is always structurally compatible (trivial case)                       |
+| `matched_ty_same_shaped_bundle_equality_passes`                       | two identically-shaped bundle types compare as matched via structural equality                                 |

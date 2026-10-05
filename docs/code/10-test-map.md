@@ -22,9 +22,39 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1650 tests** as of 2026-10-04 (`cargo test --workspace`; the count is
+**1678 tests** as of 2026-10-05 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
-+5 from the real-toolchain flow tests (synthesis v1 phase 1 Task 7): the new
++11 from Task 9 batch B (synthesis v1 phase 1): `tests/cli.rs`'s
+`build_flag_board_beats_config_board`, `build_config_board_is_used_without_the_flag`,
+`build_flag_pcf_beats_config_pcf`, `build_rejects_a_zero_config_freq`,
+`build_shows_the_source_name_of_an_unpinned_tamil_port` and
+`doctor_finds_the_config_toolchain`; `src/commands/build.rs`'s
+`the_flag_beats_the_config_which_beats_the_board_which_beats_12` and
+`a_renamed_port_shows_both_spellings`; `src/build/flow.rs`'s
+`clocks_that_differ_only_after_a_dollar_are_kept_apart` and
+`a_quote_in_an_extern_path_is_rejected_before_anything_runs`;
+`tests/synth_flow.rs`'s
+`an_async_reset_clears_the_synthesized_register_between_edges` (skips without
+the suite). `tests/ir_verilog_diff.rs` now checks the 4 `DualEdge` designs
+shifted by one tick (no new test; 228 checked, 2 extern skips). Previously, as
+of 2026-10-05 at 1667: +3 from batch A fix round 1, all in `backend/tests.rs`:
+`tamil_extern_parameters_that_romanize_alike_stay_distinct`,
+`project_names_make_the_backend_spell_externs_like_the_ast_emitter` and
+`project_names_cover_a_clock_declared_before_a_colliding_port`
+(`emit_with_names` + `emit_verilog::project_names`). Previously, as of
+2026-10-05 at 1664: +14 from the batch A review fixes (synthesis v1 phase 1 Task 9): checker
+`arrays.rs`'s `an_extern_alias_that_is_not_a_verilog_identifier_is_e1303` and
+`a_legal_verilog_identifier_alias_checks_clean` (E1303);
+`ir/tests/lower_blackbox.rs`'s `an_alias_equal_to_the_module_name_is_still_aliased`,
+`an_extern_without_an_alias_is_not_aliased` and
+`an_extern_clock_connected_to_a_non_identifier_is_s0133`;
+`ir/tests/parse_line.rs`'s `a_blackbox_alias_equal_to_its_name_round_trips_as_aliased`,
+`an_unaliased_blackbox_prints_no_equals`, `malformed_blackbox_heads_have_clear_errors`,
+`a_rising_edge_memory_may_spell_its_edge` and `an_unknown_memory_edge_is_an_error`;
+`backend/tests.rs`'s `tamil_extern_ports_that_romanize_alike_stay_distinct_like_the_ast_emitter`,
+`an_aliased_name_is_kept_verbatim_and_an_unaliased_one_is_romanized`,
+`a_zero_width_port_is_a_limitation` and `sign_extending_an_empty_operand_is_a_limitation`.
+Previously, as of 2026-10-04 at 1650: +5 from the real-toolchain flow tests (synthesis v1 phase 1 Task 7): the new
 `tests/synth_flow.rs` (4, all skip without the OSS CAD Suite:
 `synthesized_netlists_match_ir_exec` runs Yosys's `synth_ice40` netlist of 7
 designs in Icarus with `cells_sim.v` against `ir::exec`,
@@ -420,9 +450,9 @@ against a bare bundle-typed `fn` parameter inside that fn's own body
 
 | Where it lives                                      |    Count | Kind                                                                                                      |
 | --------------------------------------------------- | -------: | --------------------------------------------------------------------------------------------------------- |
-| `crates/mimz-core/src/**` (lib unit)                |      979 | in-process, `#[cfg(test)] mod tests`                                                                      |
+| `crates/mimz-core/src/**` (lib unit)                |     1040 | in-process, `#[cfg(test)] mod tests`                                                                      |
 | `crates/mimz-sim/src/**` (lib unit)                 |       90 | in-process                                                                                                |
-| `src/**` (mimz shell crate, lib unit)               |       66 | in-process (`build`, `config`, `emulate`, `project`)                                                      |
+| `src/**` (mimz shell crate, lib unit)               |       75 | in-process (`build`, `config`, `emulate`, `project`)                                                      |
 | `src/lsp.rs` + `src/main.rs` (bin/lib `mod lsp`)    |        7 | in-process (`lsp`)                                                                                        |
 | `src/bin/mimz-bench/` (bin unit)                    |        6 | in-process                                                                                                |
 | `crates/mimz-wasm` (lib unit)                       |        0 | no unit tests - covered via `wasm_parity`                                                                 |
@@ -430,7 +460,7 @@ against a bare bundle-typed `fn` parameter inside that fn's own body
 | `crates/mimz-sim/tests/sim_errors.rs`               |       81 | crate integration                                                                                         |
 | `crates/mimz-core/tests/width_rules_conformance.rs` |        2 | crate integration                                                                                         |
 | `crates/mimz-core/tests/failure_hook.rs`            |        1 | crate integration                                                                                         |
-| `tests/cli.rs`                                      |       20 | workspace integration (runs the binary)                                                                   |
+| `tests/cli.rs`                                      |       34 | workspace integration (runs the binary)                                                                   |
 | `tests/compile_string.rs`                           |       14 | workspace integration (in-process lib)                                                                    |
 | `tests/config.rs`                                   |        7 | workspace integration                                                                                     |
 | `tests/differential_fuzz.rs`                        |        8 | workspace integration (generative + Icarus + IR)                                                          |
@@ -448,7 +478,7 @@ against a bare bundle-typed `fn` parameter inside that fn's own body
 | `tests/ir_validation.rs`                            |        6 | workspace integration (IR validation-rejection corpus)                                                    |
 | `tests/ir_verilog_diff.rs`                          |        1 | workspace integration (IR-emitted Verilog in Icarus vs `ir::exec`, every corpus module; skip list pinned) |
 | `tests/ir_verilog_golden.rs`                        |        5 | workspace integration (golden IR-emitted Verilog snapshots, banner line stripped)                         |
-| `tests/synth_flow.rs`                               |        4 | workspace integration (Yosys netlist in Icarus vs `ir::exec`; `mimz build` flow; needs the OSS CAD Suite) |
+| `tests/synth_flow.rs`                               |        5 | workspace integration (Yosys netlist in Icarus vs `ir::exec`; `mimz build` flow; needs the OSS CAD Suite) |
 | `tests/lab_lessons.rs`                              |        1 | workspace integration (lab content gate, site plan W6)                                                    |
 | `tests/lsp.rs`                                      |        1 | workspace integration (smoke)                                                                             |
 | `tests/morph.rs`                                    |       20 | workspace integration                                                                                     |
@@ -460,7 +490,7 @@ against a bare bundle-typed `fn` parameter inside that fn's own body
 | `tests/test_run.rs`                                 |        9 | workspace integration                                                                                     |
 | `tests/translate.rs`                                |       15 | workspace integration                                                                                     |
 | `tests/wasm_parity.rs`                              |        2 | workspace integration (CLI vs. WASM)                                                                      |
-| **Total**                                           | **1418** |                                                                                                           |
+| **Total**                                           | **1678** |                                                                                                           |
 
 Fixture counts (current): **120** error fixtures (`tests/fixtures/errors/*.mimz`,
 plus a `README.md` and the `e0110_support/` helper folder) · **8** grammar
@@ -497,7 +527,7 @@ flavors + **16** pure-Tamil twins.
 - [`lib-unit/keyword-table.md`](test-map/lib-unit/keyword-table.md) - Keyword table (15 tests)
 - [`lib-unit/lexer.md`](test-map/lib-unit/lexer.md) - Lexer (15 tests)
 - [`lib-unit/parser.md`](test-map/lib-unit/parser.md) - Parser (102 tests across 13 files)
-- [`lib-unit/checker.md`](test-map/lib-unit/checker.md) - Checker (286 tests across 11 files)
+- [`lib-unit/checker.md`](test-map/lib-unit/checker.md) - Checker (293 tests across 11 files)
 - [`lib-unit/widths-pass.md`](test-map/lib-unit/widths-pass.md) - Widths pass internals (5 tests)
 - [`lib-unit/transliteration.md`](test-map/lib-unit/transliteration.md) - Transliteration (6 tests)
 - [`lib-unit/emitter.md`](test-map/lib-unit/emitter.md) - Emitter (93 tests, excl. translit + testbench rows)
@@ -505,8 +535,8 @@ flavors + **16** pure-Tamil twins.
 - [`lib-unit/lint.md`](test-map/lib-unit/lint.md) - Lint (5 tests)
 - [`lib-unit/explain.md`](test-map/lib-unit/explain.md) - Explain (3 tests)
 - [`lib-unit/translate.md`](test-map/lib-unit/translate.md) - Translate (10 tests)
-- [`lib-unit/build.md`](test-map/lib-unit/build.md) - Build: boards, pins, toolchain (15 tests)
-- [`lib-unit/config.md`](test-map/lib-unit/config.md) - Config (8 tests)
+- [`lib-unit/build.md`](test-map/lib-unit/build.md) - Build: boards, pins, toolchain, flow (21 tests)
+- [`lib-unit/config.md`](test-map/lib-unit/config.md) - Config (9 tests)
 - [`lib-unit/version.md`](test-map/lib-unit/version.md) - Version (3 tests)
 - [`lib-unit/morph.md`](test-map/lib-unit/morph.md) - Morph (14 tests)
 - [`lib-unit/pretty.md`](test-map/lib-unit/pretty.md) - Pretty-printer (11 tests)
@@ -524,11 +554,11 @@ flavors + **16** pure-Tamil twins.
 
 ### Workspace Integration Tests
 
-- [`workspace-integration/cli.md`](test-map/workspace-integration/cli.md) - CLI (6 tests)
+- [`workspace-integration/cli.md`](test-map/workspace-integration/cli.md) - CLI (34 tests)
 - [`workspace-integration/compile-string.md`](test-map/workspace-integration/compile-string.md) - Compile string (14 tests)
 - [`workspace-integration/config.md`](test-map/workspace-integration/config.md) - Config (7 tests)
-- [`workspace-integration/differential-fuzz.md`](test-map/workspace-integration/differential-fuzz.md) - Differential fuzzing (6 tests)
-- [`workspace-integration/docs-sync.md`](test-map/workspace-integration/docs-sync.md) - Docs sync (5 tests)
+- [`workspace-integration/differential-fuzz.md`](test-map/workspace-integration/differential-fuzz.md) - Differential fuzzing (8 tests)
+- [`workspace-integration/docs-sync.md`](test-map/workspace-integration/docs-sync.md) - Docs sync (6 tests)
 - [`workspace-integration/errors.md`](test-map/workspace-integration/errors.md) - Error fixtures (4 tests)
 - [`workspace-integration/eval.md`](test-map/workspace-integration/eval.md) - Eval (15 tests)
 - [`workspace-integration/examples.md`](test-map/workspace-integration/examples.md) - Examples (13 tests)
