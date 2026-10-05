@@ -518,19 +518,72 @@ for the session).
   IR port name to its Verilog name, so a later pin file can match by either.
 - It runs inside `ir::failure::catch(Stage::Emit, ..)`; `limitation` there (for
   example a memory deeper than 2^20 words) is a `Limitation`, like in `Lower`.
-- A black box's module name, parameter names and port names are romanized like
-  the AST emitter does; an explicit `= "alias"` name is kept verbatim (the IR
-  records an alias as `verilog_name != module_name`). A `Not`/`And`/`Or`/`Xor`
-  whose output is wider than its operand is a `Limitation`.
+- A black box's module name, parameter names and port names are spelled with
+  the AST emitter's own allocator (`translit::NameAllocator`: romanized, `_2`
+  on a clash). An explicit `= "alias"` name (`CellKind::BlackBox::aliased`) is
+  kept verbatim. Two entry points: `emit(&Module)` allocates among the
+  extern's own names only (tests, corpus checks, no project);
+  `emit_with_names(&Module, &emit_verilog::ProjectNames)` uses the project-wide
+  map `emit_verilog::project_names(&asts)` (the same passes as `transliterate`,
+  without mutating the ASTs), so the names equal `mimz compile`'s. `mimz build`
+  calls the second. A `Not`/`And`/`Or`/`Xor` whose output is wider than its
+  operand, and a zero-width port or signed operand, are a `Limitation`.
 - Goldens: `tests/ir_verilog_golden.rs` (version banner line stripped).
-- Known limits (open sub-gap in `docs/audit/gaps.md`, GAP-1, 2026-10-03): an
-  alias equal to the module name is romanized too; romanized extern pin and
-  parameter names are not de-duplicated or keyword-escaped (the AST
-  emitter's `transliterate` does both); zero-width `range`/`widen` cases
-  panic instead of reporting a `limitation`. `ir::exec` samples an async
+- Known limits (open sub-gap in `docs/audit/gaps.md`, GAP-1, 2026-10-03): a
+  romanized name is not checked against the full Verilog keyword list (the
+  AST emitter's reserved set has 24 words), in both emitters. `ir::exec`
+  samples an async
   reset only at the clock edge and ignores register edges, so the
   Icarus-vs-`ir::exec` comparison drives inputs, takes one full edge, then
   samples, and leaves out designs that mix rising and falling registers.
+
+## `build` (`src/build/`, `src/commands/build.rs`) - `mimz build`
+
+The pipeline, in `commands/build.rs::build_file` (order matters: every check
+that needs no tool runs before tool discovery, so those errors are testable on
+a machine without the suite):
+
+1. `ir_pipeline::lower_project` (the same check -> lower -> optimize as
+   `mimz ir`).
+2. Board: `--board` / `[build] board` -> `build::boards::board` (`E1503` lists
+   `boards::names()`).
+3. `failure::catch(Stage::Emit, ..)` around `backend::verilog::emit_with_names`
+   (names from `emit_verilog::project_names` over the loaded files, so an
+   extern's spelling equals `mimz compile`'s); a failure goes through
+   `ir_pipeline::report`.
+4. Extern check: a `BlackBox` cell with no Verilog file, or a listed file that
+   does not exist -> `E1505`.
+5. Pins: `build::pins::parse_pcf` (`E1506`: unreadable file or a bad line),
+   then `pins::resolve(board, user, ports)` with `Emitted::ports` as
+   `(IR name, Verilog name, width)`: the preset first, the user PCF over it;
+   `Unpinned` -> `E1501`, `NotAPort` -> `E1502`.
+6. Toolchain: `build::toolchain::Toolchain::discover` (`MIMZ_OSS_CAD` > `[build]
+toolchain` > PATH); a missing `yosys`/`nextpnr-ice40`/`icepack` -> `E1504`.
+7. `build::flow::run` in the work folder (`--work`, else
+   `<source dir>/build/<top>/`): writes `top.v` and `pins.pcf`, removes stale
+   outputs and the old bitstream, then `yosys` (`yosys_script`: quoted paths,
+   `synth_ice40 [-noabc] -top`, JSON + Verilog + `stat`), `nextpnr-ice40`
+   (`--<device> --package --freq --log`), `icepack`. A tool's own log wins;
+   otherwise its stdout/stderr are saved as `<tool>.log`. A failure is
+   `FlowError::ToolFailed { tool, log, tail }` (last 15 lines).
+8. Report: the bitstream path, the `-noabc` note on Windows, one
+   post-route max-frequency line per clock (`max_freq_lines` keeps the last
+   line per clock and drops nextpnr's `$...` suffix), the `SB_` cell counts,
+   the work folder.
+
+Names: Yosys's `-top`, the work folder and the default `<top>.bin` all use
+`Emitted::top` (the legal ASCII Verilog name). Config: `[build]` in
+`src/config.rs` (`BuildConfig`, `deny_unknown_fields`); relative `[build]
+pcf`/`toolchain` and `[compile] verilog_files` resolve against the
+`mimz.toml` directory, `--pcf`/`--extern-src`/`--work` against the cwd.
+`mimz doctor` probes the three tools (Warn, never Fail).
+
+Codes `E1501`-`E1506` are build-stage codes (docs/code/06), with
+`mimz explain` entries; they are not checker codes. Tests: unit tests in
+`src/build/{boards,pins,toolchain,flow}.rs`; tool-free CLI errors in
+`tests/cli.rs` (`build_*`); with the suite, `tests/synth_flow.rs` (Yosys's
+netlist simulated in Icarus with `ice40/cells_sim.v` against `ir::exec`, and
+`mimz build` end to end), run in CI by the `synth` job on Linux.
 
 ## Operational commands (bin-only: `init` / `doctor` / `completions` / `check --watch` / `repl` / `eject`)
 

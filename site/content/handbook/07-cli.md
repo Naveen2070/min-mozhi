@@ -1,6 +1,6 @@
 ---
 title: CLI reference
-description: Every mimz subcommand and its flags — check, compile, test, sim, eval, repl, fmt, translate, lint, explain, doctor, init, eject and completions.
+description: Every mimz subcommand and its flags — check, compile, test, sim, eval, repl, ir, build, fmt, translate, lint, explain, doctor, init, eject and completions.
 order: 7
 ---
 
@@ -26,6 +26,8 @@ checks, I/O errors.
 | `sim`         | simulate a clocked module _(experimental)_                           |
 | `eval`        | evaluate a combinational module _(experimental)_                     |
 | `repl`        | interactive REPL for a combinational module _(experimental)_         |
+| `ir`          | print a module's IR (the netlist synthesis starts from)              |
+| `build`       | synthesize to an iCE40 FPGA bitstream (needs the OSS CAD Suite)      |
 | `lint`        | style and hygiene warnings                                           |
 | `fmt`         | normalize a file's keyword flavor in place                           |
 | `translate`   | reskin a file's keywords into another flavor                         |
@@ -35,8 +37,8 @@ checks, I/O errors.
 | `completions` | generate a shell tab-completion script                               |
 | `lsp`         | run the language server over stdio                                   |
 
-There is **no `build` and no `run`**. `check` is the fast path; `compile`
-produces Verilog; `test` runs test blocks.
+There is **no `run`**. `check` is the fast path; `compile` produces Verilog;
+`test` runs test blocks; `build` goes all the way to an FPGA bitstream.
 
 ## Global flags
 
@@ -83,6 +85,25 @@ is a real terminal — see [quirks](/handbook/06-quirks).
 
 `--param W=8` · `--module <M>` · `-l/--lang`
 
+### `ir`
+
+`--module <M>` · `--param W=8` · `--no-opt` (as lowered, no optimizer) ·
+`--sexpr` (s-expression form) · `--stats` (cell counts on stderr) ·
+`-o <path>` · `--panic` · `-l/--lang`
+
+### `build`
+
+`--board icebreaker` · `--pcf <file>` · `--freq <MHz>` · `-o <path.bin>` ·
+`--work <dir>` · `--module <M>` · `--param W=8` · `--extern-src <file>` ·
+`--panic` · `-l/--lang`
+
+Runs Yosys, nextpnr-ice40 and icepack from the OSS CAD Suite (found through
+`MIMZ_OSS_CAD`, `mimz.toml [build] toolchain` or PATH). Every top-level port
+needs a pin: from the board preset, a `--pcf` file (`set_io <port> <pin>`), or
+both. Problems are `E1501`-`E1506`; `mimz explain E1501` for the long form.
+The guide's toolchain chapter has the full walkthrough, including the
+iCEBreaker pin table.
+
 ### `lint`
 
 `--json` · `-l/--lang`
@@ -112,7 +133,9 @@ Then point `mimz.toml [lib] std` at that directory.
 
 ### `doctor`
 
-`--dev` runs the contributor toolchain check as well.
+`--dev` runs the contributor toolchain check as well. The optional
+"Synthesis toolchain" section shows whether `yosys`, `nextpnr-ice40` and
+`icepack` are found and runnable.
 
 ### `completions`
 

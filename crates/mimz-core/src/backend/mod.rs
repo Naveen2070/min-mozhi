@@ -83,7 +83,7 @@ pub(crate) fn drivers(m: &Module) -> HashMap<NetId, Source> {
 
 /// Every reserved word of IEEE 1364-2005 (Annex B), sorted.
 #[rustfmt::skip]
-const VERILOG_KEYWORDS: &[&str] = &[
+pub(crate) const VERILOG_KEYWORDS: &[&str] = &[
     "always", "and", "assign", "automatic", "begin", "buf", "bufif0", "bufif1",
     "case", "casex", "casez", "cell", "cmos", "config", "deassign", "default",
     "defparam", "design", "disable", "edge", "else", "end", "endcase",

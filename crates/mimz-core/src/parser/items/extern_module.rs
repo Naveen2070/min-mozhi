@@ -16,10 +16,10 @@ impl Parser {
         let start = self.bump().span; // extern
         self.expect(TokKind::Kw(Kw::Module), "`module` after `extern`")?;
         let name = self.ident("an extern module name")?;
-        let verilog_name = if self.eat(&TokKind::Assign) {
+        let (verilog_name, verilog_name_span) = if self.eat(&TokKind::Assign) {
             if let TokKind::Str(s) = self.peek_kind().clone() {
-                self.bump();
-                Some(s)
+                let span = self.bump().span;
+                (Some(s), Some(span))
             } else {
                 let found = kind_name(self.peek_kind());
                 let span = self.peek().span;
@@ -34,7 +34,7 @@ impl Parser {
                 return None;
             }
         } else {
-            None
+            (None, None)
         };
         let mut params = Vec::new();
         if self.eat(&TokKind::LParen) {
@@ -140,6 +140,7 @@ impl Parser {
         Some(ExternModule {
             name,
             verilog_name,
+            verilog_name_span,
             params,
             doc,
             items,

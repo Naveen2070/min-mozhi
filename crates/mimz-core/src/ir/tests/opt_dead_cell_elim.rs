@@ -286,6 +286,7 @@ fn keeps_the_driver_of_a_blackbox_pin() {
         kind: CellKind::BlackBox {
             module_name: "Sink".to_string(),
             verilog_name: "Sink".to_string(),
+            aliased: false,
             params: vec![],
         },
         pins: BTreeMap::from([("x", x)]),

@@ -161,10 +161,76 @@ fn a_blackbox_with_a_verilog_name_and_params_round_trips() {
         crate::ir::CellKind::BlackBox {
             module_name: "Pll".into(),
             verilog_name: "PLL_HARD_IP_v2".into(),
+            aliased: true,
             params: vec![("MULT".into(), 4), ("DIV".into(), -1)],
         }
     );
     assert_eq!(print_line::print(&module), text);
+}
+
+#[test]
+fn a_blackbox_alias_equal_to_its_name_round_trips_as_aliased() {
+    let text = "module m\n\ncell $blackbox[Foo=Foo] :0 clk_in={0}\n";
+    let module = parse_line::parse(text).expect("parses");
+    assert!(matches!(
+        &module.cells[0].kind,
+        crate::ir::CellKind::BlackBox { aliased: true, verilog_name, .. } if verilog_name == "Foo"
+    ));
+    assert_eq!(print_line::print(&module), text);
+}
+
+#[test]
+fn an_unaliased_blackbox_prints_no_equals() {
+    let text = "module m\n\ncell $blackbox[Foo] :0 clk_in={0}\n";
+    let module = parse_line::parse(text).expect("parses");
+    assert!(matches!(
+        &module.cells[0].kind,
+        crate::ir::CellKind::BlackBox { aliased: false, verilog_name, module_name, .. }
+            if verilog_name == "Foo" && module_name == "Foo"
+    ));
+    assert_eq!(print_line::print(&module), text);
+}
+
+fn blackbox_err(op: &str) -> String {
+    let text = format!("module m\n\ncell {op} :0 clk_in={{0}}\n");
+    parse_line::parse(&text).expect_err(op)
+}
+
+#[test]
+fn malformed_blackbox_heads_have_clear_errors() {
+    for (op, needle) in [
+        ("$blackbox[=X]", "missing the module name"),
+        ("$blackbox[Pll=]", "empty Verilog name"),
+        ("$blackbox[Pll()]", "empty parameter list"),
+        ("$blackbox[Pll(MULT=4]", "unclosed parameter list"),
+        ("$blackbox[Pll(MULT=x)]", "bad parameter value"),
+    ] {
+        let e = blackbox_err(op);
+        assert!(e.contains(needle), "{op}: {e}");
+    }
+}
+
+#[test]
+fn a_rising_edge_memory_may_spell_its_edge() {
+    let text = "module m\n\ncell $mem[Rise:16] :0 raddr0={0,1} rdata0={2,3}\n";
+    let module = parse_line::parse(text).expect("parses");
+    assert!(matches!(
+        module.cells[0].kind,
+        crate::ir::CellKind::Mem {
+            edge: crate::ast::Edge::Rise,
+            depth: 16,
+            ..
+        }
+    ));
+    // The printer keeps its shorter canonical form for a rising edge.
+    assert!(print_line::print(&module).contains("$mem[16]"));
+}
+
+#[test]
+fn an_unknown_memory_edge_is_an_error() {
+    let text = "module m\n\ncell $mem[Both:16] :0 raddr0={0,1} rdata0={2,3}\n";
+    let e = parse_line::parse(text).expect_err("unknown edge");
+    assert!(e.contains("unknown clock edge `Both`"), "{e}");
 }
 
 #[test]

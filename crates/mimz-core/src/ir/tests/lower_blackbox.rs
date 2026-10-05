@@ -49,6 +49,7 @@ pub(super) fn pll_design() -> Design {
         extern_instances: vec![ExternInstance {
             module_name: "Pll".to_string(),
             verilog_name: "Pll".into(),
+            aliased: false,
             params: vec![],
             ports: vec![
                 (
@@ -190,4 +191,49 @@ fn an_extern_alias_carries_its_verilog_name() {
         (module_name.as_str(), verilog_name.as_str()),
         ("Pll", "PLL_HARD_IP_v2")
     );
+}
+
+/// An extern's clock connected to a non-identifier is S0133, exactly like a
+/// real child's (one shared `clock_parent` helper in `elaborate::instance`).
+/// `mimz check` never reaches it: the checker rejects the same source first
+/// (E0401, a `bit` expression wired to a clock port), so S0133 is the defensive
+/// answer on the checker-less paths (`mimz sim`, `mimz test`), which is why this
+/// test calls `elaborate` directly without `check`.
+#[test]
+fn an_extern_clock_connected_to_a_non_identifier_is_s0133() {
+    let src = "extern module Pll {\n  clock clk_in\n  out clk_out: bit\n}\n\nmodule M {\n  in a: bit\n  in b: bit\n  out y: bit\n  let u = Pll() { clk_in: a & b }\n  y = u.clk_out\n}\n";
+    let file = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
+    let err = crate::elaborate::elaborate_project_with_mode(
+        std::slice::from_ref(&file),
+        Some("M"),
+        &BTreeMap::new(),
+        crate::elaborate::SimMode::Lower,
+    )
+    .expect_err("a non-identifier extern clock connection must be rejected");
+    assert_eq!(err.code, Some("S0133"), "{}", err.msg);
+}
+
+fn aliased_flag(src: &str) -> bool {
+    let m = super::lower_ok(src);
+    let CellKind::BlackBox { aliased, .. } = &the_blackbox(&m).kind else {
+        unreachable!()
+    };
+    *aliased
+}
+
+const ALIAS_DEMO: &str = "module AliasDemo {\n  clock sysclk\n  out fast_clk: bit\n  let u = Pll() { clk_in: sysclk }\n  fast_clk = u.clk_out\n}\n";
+
+#[test]
+fn an_alias_equal_to_the_module_name_is_still_aliased() {
+    let src = format!(
+        "extern module Pll = \"Pll\" {{\n  clock clk_in\n  out clk_out: bit\n}}\n\n{ALIAS_DEMO}"
+    );
+    assert!(aliased_flag(&src));
+}
+
+#[test]
+fn an_extern_without_an_alias_is_not_aliased() {
+    let src =
+        format!("extern module Pll {{\n  clock clk_in\n  out clk_out: bit\n}}\n\n{ALIAS_DEMO}");
+    assert!(!aliased_flag(&src));
 }

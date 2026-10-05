@@ -10,7 +10,8 @@ use super::{Source, drivers, legal_name, output_pins};
 use crate::ast::{Dir, Edge};
 use crate::bits::to_decimal_string;
 use crate::checker::consteval::ConstVal;
-use crate::emit_verilog::translit::romanize;
+use crate::emit_verilog::ProjectNames;
+use crate::emit_verilog::translit::NameAllocator;
 use crate::ir::{Bits, Cell, CellKind, Module, NetId};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write;
@@ -30,8 +31,25 @@ const MAX_MEM_DEPTH: u128 = 1 << 20;
 
 /// Emits a validated, flat `module` as one Verilog-2005 module. An
 /// unsupported construct is reported with `ir::failure::limitation`.
+///
+/// An extern's module, parameter and pin names are allocated among the extern's
+/// own names only; use [`emit_with_names`] to spell them exactly as `mimz
+/// compile` does.
 pub fn emit(module: &Module) -> Emitted {
+    emit_impl(module, None)
+}
+
+/// Like [`emit`], but an extern's (un-aliased) module, parameter and pin names
+/// come from the project-wide name map `mimz compile` uses
+/// ([`crate::emit_verilog::project_names`]), so the user's companion `.v`
+/// matches both paths even when a project name already took a spelling.
+pub fn emit_with_names(module: &Module, names: &ProjectNames) -> Emitted {
+    emit_impl(module, Some(names))
+}
+
+fn emit_impl(module: &Module, project: Option<&ProjectNames>) -> Emitted {
     Emitter {
+        project,
         m: module,
         drivers: drivers(module),
         used: HashSet::new(),
@@ -44,6 +62,7 @@ pub fn emit(module: &Module) -> Emitted {
 }
 
 struct Emitter<'a> {
+    project: Option<&'a ProjectNames>,
     m: &'a Module,
     drivers: HashMap<NetId, Source>,
     used: HashSet<String>,
@@ -55,6 +74,9 @@ struct Emitter<'a> {
 }
 
 fn range(w: u32) -> String {
+    if w == 0 {
+        crate::ir::failure::limitation("a zero-width port or net has no Verilog spelling".into());
+    }
     if w == 1 {
         String::new()
     } else {
@@ -211,7 +233,10 @@ impl Emitter<'_> {
         }
         let k = w - have;
         if signed {
-            let msb = self.read(&Bits::unsigned(vec![*bits.nets.last().unwrap()]));
+            let Some(last) = bits.nets.last() else {
+                crate::ir::failure::limitation("cannot sign-extend a zero-width operand".into());
+            };
+            let msb = self.read(&Bits::unsigned(vec![*last]));
             format!("{{{{{k}{{{msb}}}}}, {e}}}")
         } else {
             format!("{{{k}'b0, {e}}}")
@@ -403,18 +428,52 @@ impl Emitter<'_> {
         let CellKind::BlackBox {
             module_name,
             verilog_name,
+            aliased,
             params,
         } = &cell.kind
         else {
             unreachable!("black_box() is only called for a BlackBox cell")
         };
-        // Like the AST emitter: the Min-Mozhi-facing names (module, parameters,
-        // ports) are romanized, an explicit `= "alias"` is kept verbatim. The IR
-        // only records the alias as `verilog_name != module_name`.
-        let verilog_name = if verilog_name == module_name {
-            romanize(verilog_name)
-        } else {
+        // Spell the Min-Mozhi-facing names (module, parameters, pins) exactly as
+        // the AST emitter does, with the same allocator (romanized, `_2` on a
+        // clash, reserved words avoided), so the user's companion `.v` matches
+        // both paths. An explicit `= "alias"` is kept verbatim. Allocation
+        // order is the AST pass's: module, parameters, then ports in declaration
+        // order (the IR keeps ports only in `extern_decls`, so a clock/reset,
+        // which it lacks, comes last).
+        let declared: Vec<&str> = self
+            .m
+            .extern_decls
+            .get(module_name)
+            .map(|d| d.iter().map(|(n, ..)| n.as_str()).collect())
+            .unwrap_or_default();
+        let mut pin_order: Vec<&str> = declared
+            .iter()
+            .filter(|n| cell.pins.contains_key(**n))
+            .copied()
+            .collect();
+        pin_order.extend(cell.pins.keys().filter(|p| !declared.contains(*p)));
+        // With a project name map (`mimz build`) the spelling is exactly
+        // `mimz compile`'s; without one, allocate among this extern's names.
+        let project = self.project;
+        let mut names = NameAllocator::new();
+        for n in std::iter::once(module_name.as_str())
+            .chain(params.iter().map(|(n, _)| n.as_str()))
+            .chain(pin_order.iter().copied())
+        {
+            names.claim(n);
+        }
+        let mut spell = |n: &str| match project {
+            Some(p) => p.get(n),
+            None => names.allocate(n),
+        };
+        let module_v = spell(module_name);
+        let param_names: Vec<String> = params.iter().map(|(n, _)| spell(n)).collect();
+        let pin_names: HashMap<&str, String> = pin_order.iter().map(|p| (*p, spell(p))).collect();
+        let verilog_name = if *aliased {
             verilog_name.clone()
+        } else {
+            module_v
         };
         let outs: HashMap<String, String> = output_pins(self.m, cell)
             .into_iter()
@@ -428,7 +487,7 @@ impl Emitter<'_> {
             .iter()
             .map(|(pin, bits)| {
                 let e = outs.get(*pin).cloned().unwrap_or_else(|| self.read(bits));
-                format!(".{}({e})", romanize(pin))
+                format!(".{}({e})", pin_names[pin])
             })
             .collect();
         let ps = if params.is_empty() {
@@ -436,7 +495,8 @@ impl Emitter<'_> {
         } else {
             let items: Vec<String> = params
                 .iter()
-                .map(|(n, v)| format!(".{}({v})", romanize(n)))
+                .zip(&param_names)
+                .map(|((_, v), n)| format!(".{n}({v})"))
                 .collect();
             format!(" #({})", items.join(", "))
         };

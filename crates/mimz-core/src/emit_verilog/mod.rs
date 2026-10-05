@@ -43,7 +43,7 @@ mod tests;
 
 pub use testbench::emit_testbench;
 pub(crate) use translit::romanize;
-pub use translit::transliterate;
+pub use translit::{ProjectNames, project_names, transliterate};
 
 use std::collections::HashMap;
 use std::rc::Rc;

@@ -179,13 +179,7 @@ pub(super) fn flatten_instance(
     // Clock/reset: explicit connection, else the same-named parent signal.
     let mut clock_map: HashMap<String, String> = HashMap::new();
     for c in child.clocks.iter().chain(&child.resets) {
-        let parent = inst
-            .conns
-            .iter()
-            .find(|cn| cn.port.name == *c)
-            .map(|cn| prw.expr(&cn.signal).and_then(|e| conn_signal_name(&e)))
-            .transpose()?
-            .unwrap_or_else(|| c.clone());
+        let parent = clock_parent(inst, &prw, c)?;
         subst.insert(c.clone(), ident_expr(parent.clone(), inst.span));
         clock_map.insert(c.clone(), parent);
     }
@@ -358,6 +352,18 @@ pub(super) fn flatten_instance(
     Ok(flat)
 }
 
+/// The parent signal a child's (or extern's) clock/reset `port` is wired to:
+/// the explicit connection, which must be a plain signal name (S0133), else the
+/// same-named parent signal.
+fn clock_parent(inst: &ast::Inst, prw: &Rw, port: &str) -> Result<String, Box<Diag>> {
+    inst.conns
+        .iter()
+        .find(|cn| cn.port.name == port)
+        .map(|cn| prw.expr(&cn.signal).and_then(|e| conn_signal_name(&e)))
+        .transpose()
+        .map(|p| p.unwrap_or_else(|| port.to_string()))
+}
+
 /// Handle an extern-module instance: it has no body, so there's nothing to
 /// recursively elaborate. `strict` mode refuses to simulate around missing
 /// hardware behavior; `warn` mode lowers every output port to an
@@ -486,13 +492,7 @@ fn flatten_extern_instance(
                 // Same rule as a real child's clock/reset (`clock_map` in
                 // `flatten_instance`): explicit connection, else the
                 // same-named parent signal.
-                let parent = inst
-                    .conns
-                    .iter()
-                    .find(|cn| cn.port.name == n.name)
-                    .map(|cn| prw.expr(&cn.signal).and_then(|e| conn_signal_name(&e)))
-                    .transpose()?
-                    .unwrap_or_else(|| n.name.clone());
+                let parent = clock_parent(inst, prw, &n.name)?;
                 let sig = Signal {
                     name: parent,
                     width: Width {
@@ -511,6 +511,7 @@ fn flatten_extern_instance(
             .verilog_name
             .clone()
             .unwrap_or_else(|| em.name.name.clone()),
+        aliased: em.verilog_name.is_some(),
         params: em
             .params
             .iter()

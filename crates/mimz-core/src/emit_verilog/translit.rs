@@ -54,39 +54,100 @@ const VERILOG_RESERVED: &[&str] = &[
 /// checker (names are validated against the ORIGINAL spelling) and before
 /// `Project::from_files` (the symbol table must see the final names).
 pub fn transliterate(files: &mut [File]) {
+    name_passes(files, true);
+}
+
+/// The one naming driver behind both [`transliterate`] and [`project_names`],
+/// so `mimz compile` and `mimz build` can never allocate differently.
+/// `rewrite` writes each allocated name back into the AST.
+fn name_passes(files: &mut [File], rewrite: bool) -> NameAllocator {
+    let mut names = NameAllocator::new();
     // Pass 1: every ASCII name claims its spelling, so a romanization can
     // never collide with a name the user already wrote.
-    let mut used: HashSet<String> = VERILOG_RESERVED.iter().map(|s| s.to_string()).collect();
+    for f in files.iter_mut() {
+        for_each_name(f, &mut |name| names.claim(name));
+    }
+    // Pass 2: allocate non-ASCII names through one shared map (the same
+    // source spelling maps identically everywhere, across files too).
     for f in files.iter_mut() {
         for_each_name(f, &mut |name| {
-            if name.is_ascii() {
-                used.insert(name.clone());
+            let out = names.allocate(name);
+            if rewrite {
+                *name = out;
             }
         });
     }
-    // Pass 2: rewrite non-ASCII names through one shared map (the same
-    // source spelling maps identically everywhere, across files too).
-    let mut map: HashMap<String, String> = HashMap::new();
-    for f in files.iter_mut() {
-        for_each_name(f, &mut |name| {
-            if name.is_ascii() {
-                return;
-            }
-            if let Some(out) = map.get(name) {
-                *name = out.clone();
-                return;
-            }
-            let base = romanize(name);
-            let mut candidate = base.clone();
-            let mut n = 2;
-            while used.contains(&candidate) {
-                candidate = format!("{base}_{n}");
-                n += 1;
-            }
-            used.insert(candidate.clone());
-            map.insert(name.clone(), candidate.clone());
-            *name = candidate;
-        });
+    names
+}
+
+/// What [`transliterate`] would rename every non-ASCII name of a project to.
+pub struct ProjectNames(HashMap<String, String>);
+
+impl ProjectNames {
+    /// `name` as `mimz compile` writes it: ASCII unchanged, a name the project
+    /// does not contain romanized without a collision check.
+    pub fn get(&self, name: &str) -> String {
+        match self.0.get(name) {
+            Some(out) => out.clone(),
+            None => romanize(name),
+        }
+    }
+}
+
+/// Runs `transliterate`'s two passes over `files` and returns the resulting
+/// name map, leaving `files` untouched. `mimz build` hands it to the IR
+/// backend so an extern's names match `mimz compile` exactly.
+pub fn project_names(files: &[File]) -> ProjectNames {
+    // ponytail: clones the ASTs to reuse the mutating walker as is; a
+    // read-only walker if that clone ever shows up in a profile.
+    let mut files = files.to_vec();
+    ProjectNames(name_passes(&mut files, false).map)
+}
+
+/// The collision-free ASCII spelling of every name, shared by the AST pre-pass
+/// above and the IR backend (`backend::verilog`, for an extern's pins and
+/// parameters) so both paths spell an extern's ports identically.
+pub(crate) struct NameAllocator {
+    used: HashSet<String>,
+    map: HashMap<String, String>,
+}
+
+impl NameAllocator {
+    /// An allocator that already treats the reserved Verilog words as taken.
+    pub(crate) fn new() -> Self {
+        Self {
+            used: VERILOG_RESERVED.iter().map(|s| s.to_string()).collect(),
+            map: HashMap::new(),
+        }
+    }
+
+    /// Pass 1: an ASCII `name` keeps its spelling, so nothing may collide with it.
+    pub(crate) fn claim(&mut self, name: &str) {
+        if name.is_ascii() {
+            self.used.insert(name.to_string());
+        }
+    }
+
+    /// Pass 2: `name` as it is emitted. ASCII passes through; a non-ASCII name
+    /// is romanized, `_2`, `_3`, ... on a collision, and the same source
+    /// spelling always maps to the same result.
+    pub(crate) fn allocate(&mut self, name: &str) -> String {
+        if name.is_ascii() {
+            return name.to_string();
+        }
+        if let Some(out) = self.map.get(name) {
+            return out.clone();
+        }
+        let base = romanize(name);
+        let mut candidate = base.clone();
+        let mut n = 2;
+        while self.used.contains(&candidate) {
+            candidate = format!("{base}_{n}");
+            n += 1;
+        }
+        self.used.insert(candidate.clone());
+        self.map.insert(name.to_string(), candidate.clone());
+        candidate
     }
 }
 

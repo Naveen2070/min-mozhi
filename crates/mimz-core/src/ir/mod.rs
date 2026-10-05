@@ -158,6 +158,10 @@ pub enum CellKind {
         /// The real Verilog module name to instantiate (`extern module X =
         /// "Y"`), equal to `module_name` when no alias is given.
         verilog_name: String,
+        /// True exactly when the source wrote `= "..."`, even if the alias
+        /// equals `module_name`; an aliased name is emitted verbatim, an
+        /// un-aliased one is romanized like every other Min-Mozhi name.
+        aliased: bool,
         /// The extern's folded parameters for this instance, in declaration
         /// order.
         params: Vec<(String, i128)>,

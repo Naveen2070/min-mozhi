@@ -36,7 +36,7 @@ use crate::span::Span;
 pub fn check(files: &[ast::File]) -> Result<(), Vec<Diag>> {
     let mut ck = Checker::new(files);
     ck.build_symbols(); // project tables + project-wide duplicates
-    ck.check_extern_modules(); // extern module ports must be scalar (E1302)
+    ck.check_extern_modules(); // extern ports must be scalar (E1302), alias a Verilog identifier (E1303)
     ck.check_func_cycles(); // ban recursive fn call cycles (E0805)
     ck.check_func_unreachable(); // dead code after `return` (E0812)
     ck.eval_consts(); // file-level consts, top to bottom

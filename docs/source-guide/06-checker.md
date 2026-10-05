@@ -33,7 +33,7 @@ It also synthesizes the two hidden `__Valid`/`__ValidSigned` bundles that back t
 
 ### Pass 2: `extern_module.rs` - Black-Box Port Shapes
 
-**`check_extern_modules()`** validates Verilog-FFI `extern module` declarations. Ports must stay scalar (`bit`/`bits[N]`/`signed[N]`) - no bundle- or array-typed extern port, since there is no Verilog-side shape to enforce against (E1302).
+**`check_extern_modules()`** validates Verilog-FFI `extern module` declarations. Ports must stay scalar (`bit`/`bits[N]`/`signed[N]`) - no bundle- or array-typed extern port, since there is no Verilog-side shape to enforce against (E1302). An `= "alias"` naming the real Verilog module must also be a legal Verilog identifier, not a keyword (E1303).
 
 ### Passes 3 and 4: `funcs.rs` - Function Sanity
 

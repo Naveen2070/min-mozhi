@@ -68,7 +68,7 @@ will key off them - never renumber.
 | E10xx       | lexer                   | below                            |
 | E11xx       | parser                  | below                            |
 | E12xx       | loader                  | below                            |
-| E1301–E1302 | checker (extern module) | [`11-checker.md`](11-checker.md) |
+| E1301–E1303 | checker (extern module) | [`11-checker.md`](11-checker.md) |
 | E15xx       | build (`mimz build`)    | below                            |
 | W000x       | lint / flavor mixing    | below (section Warnings)         |
 | S01xx–S05xx | simulator runtime       | [`13-tooling.md`](13-tooling.md) |

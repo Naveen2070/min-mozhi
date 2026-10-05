@@ -196,6 +196,39 @@ fn extern_module_scalar_ports_check_clean() {
     check_one(src).expect("a scalar-only extern module must check clean");
 }
 
+#[test]
+fn an_extern_alias_that_is_not_a_verilog_identifier_is_e1303() {
+    // A space, a `]` (breaks the IR line format), a leading digit, a keyword,
+    // and an empty alias.
+    for alias in ["my pll", "a]b", "3x", "module", ""] {
+        let src = format!("extern module Pll = \"{alias}\" {{ in clk_in: bit }}\nmodule M {{ }}\n");
+        let d = first_err(&src, "E1303");
+        assert_eq!(
+            d.msg,
+            format!("extern module alias `{alias}` is not a Verilog identifier")
+        );
+        // The caret sits on the alias string, not the whole declaration.
+        assert!(
+            src[d.span.start..d.span.end].contains(&format!("\"{alias}\"")),
+            "{alias}: span covers {:?}",
+            &src[d.span.start..d.span.end]
+        );
+        assert!(
+            d.help
+                .as_deref()
+                .is_some_and(|h| h.contains("PLL_HARD_IP_v2"))
+        );
+    }
+}
+
+#[test]
+fn a_legal_verilog_identifier_alias_checks_clean() {
+    for alias in ["PLL_HARD_IP_v2", "_x$1", "Foo"] {
+        let src = format!("extern module Pll = \"{alias}\" {{ in clk_in: bit }}\nmodule M {{ }}\n");
+        check_one(&src).unwrap_or_else(|e| panic!("`{alias}` is legal: {e:?}"));
+    }
+}
+
 // NOTE on the three tests below: the task brief's Step 1 sketch connected
 // extern OUTPUT ports (`clk_out`, `locked`) inside the `{ conns }` block,
 // but `check_inst` already rejects that for real modules too (E0107, see

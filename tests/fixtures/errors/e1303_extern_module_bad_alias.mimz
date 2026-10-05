@@ -1,0 +1,3 @@
+// expect: E1303
+extern module Pll = "my pll" { in clk_in: bit }
+module M { }
