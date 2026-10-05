@@ -1,4 +1,4 @@
-# Unit: config (`src/config.rs`, 8 tests)
+# Unit: config (`src/config.rs`, 9 tests)
 
 > Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
 

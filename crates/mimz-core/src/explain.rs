@@ -978,6 +978,17 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          Fix: flatten the port to its scalar fields, matching however the\n\
          real Verilog module's actual port list is shaped.",
     ),
+    (
+        "E1303",
+        "E1303 — extern module alias is not a Verilog identifier\n\n\
+         `extern module Pll = \"PLL_HARD_IP_v2\" { .. }` names the real Verilog\n\
+         module the instance is wired to, and that name is written into the\n\
+         Verilog `mimz` generates and the netlist text. It must be a legal\n\
+         Verilog-2005 identifier: letters, digits, `_` and `$`, not starting\n\
+         with a digit, and not a Verilog keyword (`module`, `wire`, ...). A\n\
+         space, a bracket or a Tamil letter would produce Verilog no tool reads.\n\n\
+         Fix: use the module's real name, e.g. `= \"PLL_HARD_IP_v2\"`.",
+    ),
     // ----- E15xx: `mimz build` (board, pins, toolchain, extern Verilog) -----
     (
         "E1501",

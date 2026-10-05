@@ -108,6 +108,40 @@ jobs:
         # microbench timings on shared runners are too noisy to gate on.
         run: cargo bench --no-run
 
+  synth:
+    name: synthesis (Yosys + nextpnr + Icarus)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2
+
+      - name: Install Icarus Verilog and ALSA headers
+        run: sudo apt-get update && sudo apt-get install -y iverilog libasound2-dev
+
+      - name: Install OSS CAD Suite (pinned 2026-10-01)
+        # Pinned so a new Yosys/nextpnr release cannot change results under us;
+        # bump the date deliberately (docs/BUILD.md).
+        run: |
+          curl -fsSL -o oss.tgz https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2026-10-01/oss-cad-suite-linux-x64-20261001.tgz
+          tar -xzf oss.tgz
+          rm oss.tgz
+          echo "MIMZ_OSS_CAD=$PWD/oss-cad-suite" >> "$GITHUB_ENV"
+
+      - name: Synthesis tests (default ABC9 flow on Linux)
+        # Only the test that needs the suite: `check` already runs
+        # ir_verilog_diff and ir_verilog_golden with REQUIRE_IVERILOG.
+        # REQUIRE_YOSYS turns a missing or broken suite into a failure.
+        run: cargo test --test synth_flow
+        env:
+          REQUIRE_YOSYS: "1"
+          REQUIRE_IVERILOG: "1"
+
   bench:
     name: mimz-bench correctness gate
     runs-on: ubuntu-latest

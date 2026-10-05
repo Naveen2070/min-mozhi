@@ -11,7 +11,7 @@ prove the checker _function_ rejects bad code; these prove the _CLI_ surfaces it
 | Test                                           | Locks in                                                                                                                                                             |
 | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `every_error_fixture_reports_its_code`         | each fixture, run through `mimz check`, exits non-zero AND prints `error[<code>]` to stderr - the rendered code is the stable user-facing contract, checked for real |
-| `error_corpus_covers_every_checker_code`       | completeness guard: every code in `ALL_CHECKER_CODES` (the 75 stable checker codes) has at least one fixture - a new E-code can't ship without an end-to-end fixture |
+| `error_corpus_covers_every_checker_code`       | completeness guard: every code in `ALL_CHECKER_CODES` (the 78 stable checker codes) has at least one fixture - a new E-code can't ship without an end-to-end fixture |
 | `checker_code_list_matches_the_catalog`        | `ALL_CHECKER_CODES` must equal the 11-checker.md catalog table (reserved rows exempt) - the corpus, the docs, and the code can't drift apart                         |
 | `json_flag_emits_machine_readable_diagnostics` | the `--json` wire format (docs/code/06): one JSON array on stdout with code/path/line/help; lexer errors included; `[]` + exit 0 on success                          |
 

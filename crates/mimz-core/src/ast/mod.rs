@@ -313,6 +313,9 @@ pub struct ExternModule {
     /// (`extern module Pll = "PLL_HARD_IP_v2" { ... }`). `None` means the
     /// real module is literally named `name`.
     pub verilog_name: Option<String>,
+    /// Source span of the alias string literal (`Some` exactly when
+    /// `verilog_name` is), so the checker can put E1303 on it.
+    pub verilog_name_span: Option<Span>,
     /// Compile-time parameters — identical shape/checking to `Module::params`.
     pub params: Vec<Param>,
     /// Human-readable behavior notes (`doc: "..."`) — there is no body to

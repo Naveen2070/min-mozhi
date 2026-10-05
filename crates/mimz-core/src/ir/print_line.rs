@@ -104,10 +104,11 @@ pub(super) fn cell_op_name(kind: &CellKind) -> String {
         CellKind::BlackBox {
             module_name,
             verilog_name,
+            aliased,
             params,
         } => {
             let mut s = format!("$blackbox[{module_name}");
-            if verilog_name != module_name {
+            if *aliased {
                 s += &format!("={verilog_name}");
             }
             if !params.is_empty() {

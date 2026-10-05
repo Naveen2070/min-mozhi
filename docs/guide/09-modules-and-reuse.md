@@ -151,6 +151,10 @@ extern module Pll = "real_pll"(MULT: int = 2) {
 }
 ```
 
+The alias must be a legal Verilog identifier (letters, digits, `_` and `$`,
+not starting with a digit, not a Verilog keyword such as `module`), otherwise
+the compiler reports `E1303`.
+
 The compiled output must be linked against the real `.v` file separately
 (`mimz.toml` or `--extern-src`). See spec/02 section 1.5c for the full
 grammar.

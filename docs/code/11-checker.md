@@ -17,7 +17,7 @@ this fixed order - the numbering used throughout this page:
 | #   | Call in `check()`          | File               | Owns                                                                                                  |
 | --- | -------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------- |
 | 1   | `build_symbols()`          | `symbols.rs`       | Per-file module/enum/bundle/extern tables, project-wide funcs + E0001/E0002/E0801/E0802/E0909/E1301   |
-| 2   | `check_extern_modules()`   | `extern_module.rs` | `extern module` port-type validation - scalar-only ports (E1302)                                      |
+| 2   | `check_extern_modules()`   | `extern_module.rs` | `extern module` port-type validation (scalar-only ports, E1302) and alias spelling (E1303)            |
 | 3   | `check_func_cycles()`      | `funcs.rs`         | Call-graph cycle detection - direct and mutual recursion (E0805)                                      |
 | 4   | `check_func_unreachable()` | `funcs.rs`         | Dead code after `return` in a `fn` body (E0812)                                                       |
 | 5   | `eval_consts()`            | `consteval.rs`     | File-level consts, top to bottom + the `eval()` engine every const position calls (E0004/E0201/E0202) |
@@ -196,6 +196,7 @@ tombstone row here. Each code is exercised two ways: in-process by
 | E0912 | `??`'s right operand doesn't match the left's `data` type - unwrap form needs the same type as `data`, OR-mux form needs another valid-bundle whose `data` matches exactly (no coercion)                                                                | match the type/width exactly, or `extend`/`trunc`/slice the source before using it as the right operand                                                          |
 | E1301 | `extern module` name reused more than once in this file                                                                                                                                                                                                 | rename one - extern module names are unique within one file, same rule as `module` (spec/02 section 1.5b)                                                        |
 | E1302 | `extern module` port has a non-scalar type (bundle/array)                                                                                                                                                                                               | flatten to `bit`/`bits[N]`/`signed[N]` - a real Verilog module's port list is always flat wires (spec/02 section 1.5c)                                           |
+| E1303 | `extern module X = "alias"` where the alias is not a Verilog-2005 identifier (a space, `]`, leading digit, keyword, non-ASCII)                                                                                                                          | use the real module's name: letters, digits, `_`, `$`, not starting with a digit, not a Verilog keyword, e.g. `= "PLL_HARD_IP_v2"`                               |
 
 Numbering scheme:
 
@@ -229,11 +230,11 @@ Conversely, `W0001` (mixed-flavor file) IS a member of
 fixture like every other entry. The remaining warnings (`W0002`–`W0004`)
 come from the separate `lint` pass - see docs/code/06 section Warnings.
 
-Reverse index - which numbers exist in `ALL_CHECKER_CODES` today: 77
+Reverse index - which numbers exist in `ALL_CHECKER_CODES` today: 78
 entries, `E0001`–`E0004`, `E0101`–`E0111`, `E0201`–`E0202`,
 `E0301`–`E0304`, `E0401`–`E0420`, `E0501`–`E0505`, `E0601`–`E0602`,
 `E0701`–`E0705`, `E0801`–`E0813`, `E0901`–`E0903`, `E0906`–`E0907`,
-`E0909`–`E0912`, `E1301`–`E1302`.
+`E0909`–`E0912`, `E1301`–`E1303`.
 
 ## How the OR-arm binding intersection pass works (pass 6)
 

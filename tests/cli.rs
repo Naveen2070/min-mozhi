@@ -417,8 +417,30 @@ fn ir_stats_without_the_optimizer_has_one_column() {
 
 // ---- build (errors that need no toolchain) -------------------------------
 
+/// A temp dir removed on drop (also when an assertion fails).
+struct TempDir(std::path::PathBuf);
+
+impl std::ops::Deref for TempDir {
+    type Target = std::path::Path;
+    fn deref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl AsRef<std::path::Path> for TempDir {
+    fn as_ref(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 /// A unique temp dir for this process and `name`, holding `name` = `contents`.
-fn tempdir_with(name: &str, contents: &str) -> std::path::PathBuf {
+fn tempdir_with(name: &str, contents: &str) -> TempDir {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static N: AtomicUsize = AtomicUsize::new(0);
     let dir = std::env::temp_dir().join(format!(
@@ -430,7 +452,7 @@ fn tempdir_with(name: &str, contents: &str) -> std::path::PathBuf {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join(name), contents).unwrap();
-    dir
+    TempDir(dir)
 }
 
 const BLINK_OUT_ONLY: &str = "module B {\n  out led: bit\n  led = 1\n}\n";
@@ -596,4 +618,111 @@ fn build_rejects_a_zero_freq() {
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(2));
+}
+
+/// Run `mimz build` on `blink.mimz` in `dir`, no toolchain (`MIMZ_OSS_CAD`
+/// points nowhere), and return `(exit code, stderr)`.
+fn build_in(dir: &TempDir, extra: &[&str]) -> (Option<i32>, String) {
+    let out = mimz()
+        .args(["build", dir.join("blink.mimz").to_str().unwrap()])
+        .args(extra)
+        .env("MIMZ_OSS_CAD", dir.join("no-suite-here"))
+        .output()
+        .unwrap();
+    (
+        out.status.code(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    )
+}
+
+/// A project dir with `mimz.toml` = `toml` and `blink.mimz` = `src`.
+fn project(toml: &str, src: &str) -> TempDir {
+    let dir = tempdir_with("mimz.toml", toml);
+    std::fs::write(dir.join("blink.mimz"), src).unwrap();
+    dir
+}
+
+const LED1_ONLY: &str = "module B {\n  out led1: bit\n  led1 = 1\n}\n";
+
+#[test]
+fn build_flag_board_beats_config_board() {
+    let dir = project("[build]\nboard = \"nope\"\n", LED1_ONLY);
+    let (_, err) = build_in(&dir, &["--board", "icebreaker"]);
+    assert!(!err.contains("E1503"), "{err}");
+    assert!(err.contains("E1504"), "pins resolved, tools missing: {err}");
+}
+
+#[test]
+fn build_config_board_is_used_without_the_flag() {
+    let dir = project("[build]\nboard = \"icebreaker\"\n", LED1_ONLY);
+    let (_, err) = build_in(&dir, &[]);
+    assert!(!err.contains("E1501"), "preset pins used: {err}");
+    assert!(err.contains("E1504"), "{err}");
+}
+
+#[test]
+fn build_flag_pcf_beats_config_pcf() {
+    let dir = project("[build]\npcf = \"bad.pcf\"\n", BLINK_OUT_ONLY);
+    std::fs::write(dir.join("bad.pcf"), "set_io ledd 11\n").unwrap();
+    std::fs::write(dir.join("good.pcf"), "set_io led 11\n").unwrap();
+    let (_, err) = build_in(&dir, &[]);
+    assert!(err.contains("E1502"), "config pcf alone is used: {err}");
+    let good = dir.join("good.pcf");
+    let (_, err) = build_in(&dir, &["--pcf", good.to_str().unwrap()]);
+    assert!(!err.contains("E1502"), "{err}");
+    assert!(err.contains("E1504"), "{err}");
+}
+
+#[test]
+fn build_rejects_a_zero_config_freq() {
+    let dir = project("[build]\nfreq = 0\n", BLINK_OUT_ONLY);
+    let (code, err) = build_in(&dir, &[]);
+    assert_eq!(code, Some(1));
+    assert!(
+        err.contains("error:") && err.contains("freq") && err.contains("= help:"),
+        "{err}"
+    );
+}
+
+#[test]
+fn build_shows_the_source_name_of_an_unpinned_tamil_port() {
+    let dir = tempdir_with(
+        "blink.mimz",
+        "module B {\n  out விளக்கு: bit\n  விளக்கு = 1\n}\n",
+    );
+    let (_, err) = build_in(&dir, &["--board", "icebreaker"]);
+    assert!(
+        err.contains("E1501") && err.contains("`விளக்கு (villakku)`"),
+        "{err}"
+    );
+}
+
+/// `[build] toolchain` is relative to mimz.toml and `doctor` honors it.
+#[test]
+fn doctor_finds_the_config_toolchain() {
+    let dir = tempdir_with("mimz.toml", "[build]\ntoolchain = \"fake-suite\"\n");
+    let bin = dir.join("fake-suite").join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::write(
+        bin.join(format!("yosys{}", std::env::consts::EXE_SUFFIX)),
+        b"",
+    )
+    .unwrap();
+    let out = mimz()
+        .arg("doctor")
+        .current_dir(&dir)
+        .env_remove("MIMZ_OSS_CAD")
+        .output()
+        .unwrap();
+    let s = String::from_utf8_lossy(&out.stdout);
+    let y = s.lines().find(|l| l.contains(" yosys ")).unwrap_or("");
+    // The fake file cannot run: a warning naming the path, never a green tick.
+    assert!(
+        y.contains('⚠') && y.contains("cannot run") && y.contains("fake-suite"),
+        "{s}"
+    );
+    assert!(
+        out.status.success(),
+        "optional tools never fail doctor: {s}"
+    );
 }

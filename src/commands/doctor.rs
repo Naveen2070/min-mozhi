@@ -155,24 +155,51 @@ pub(crate) fn doctor(dev: bool) -> ExitCode {
 
     // ---- Synthesis toolchain (`mimz build`; optional) --------------------
     heading("Synthesis toolchain (optional)");
-    let tc = mimz::build::toolchain::Toolchain::discover(None);
-    let tool_probe = |tool: &str, flag: &str| -> Option<String> {
-        tc.find(tool)?;
-        let out = tc.command(tool).arg(flag).output().ok()?;
-        let text = String::from_utf8_lossy(&out.stdout).into_owned()
-            + &String::from_utf8_lossy(&out.stderr);
-        text.lines()
-            .map(str::trim)
-            .find(|l| !l.is_empty())
-            .map(str::to_string)
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let cfg_path = mimz::config::Config::discover(&cwd);
+    let cfg = cfg_path.as_deref().map(mimz::config::Config::load);
+    // `[build] toolchain` is relative to mimz.toml, as in `mimz build`.
+    let cfg_root = match (&cfg, cfg_path.as_deref().and_then(|p| p.parent())) {
+        (Some(Ok(c)), Some(dir)) => c.build.toolchain.as_deref().map(|t| dir.join(t)),
+        _ => None,
     };
+    let tc = mimz::build::toolchain::Toolchain::discover(cfg_root.as_deref());
     const BUILD_HINT: &str = "`mimz build`; OSS CAD Suite, docs/BUILD.md";
-    failed |= optional("yosys", tool_probe("yosys", "-V"), BUILD_HINT);
-    failed |= optional(
-        "nextpnr-ice40",
-        tool_probe("nextpnr-ice40", "--version"),
-        BUILD_HINT,
-    );
+    // Three states, never Fail (optional): ran OK (version line), found but
+    // cannot run (Warn naming the path and why), not found (Warn).
+    let tool_line = |tool: &str, flag: &str| -> bool {
+        let Some(path) = tc.find(tool) else {
+            return optional(tool, None, BUILD_HINT);
+        };
+        let first = |b: &[u8]| {
+            String::from_utf8_lossy(b)
+                .lines()
+                .map(str::trim)
+                .find(|l| !l.is_empty())
+                .map(str::to_string)
+        };
+        let why = match tc.command(tool).arg(flag).output() {
+            Ok(out) if out.status.success() => {
+                return optional(
+                    tool,
+                    first(&out.stdout).or_else(|| first(&out.stderr)),
+                    BUILD_HINT,
+                );
+            }
+            Ok(out) => first(&out.stderr).unwrap_or_else(|| out.status.to_string()),
+            Err(e) => e.to_string(),
+        };
+        line(
+            Status::Warn,
+            tool,
+            &format!(
+                "found at {} but cannot run ({why}) - see docs/BUILD.md (on Windows, a DLL clash with another MSYS2/Cygwin install)",
+                path.display()
+            ),
+        )
+    };
+    failed |= tool_line("yosys", "-V");
+    failed |= tool_line("nextpnr-ice40", "--version");
     failed |= optional(
         "icepack",
         tc.find("icepack").map(|p| p.display().to_string()),
@@ -200,13 +227,12 @@ pub(crate) fn doctor(dev: bool) -> ExitCode {
             )
         }
     }
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    match mimz::config::Config::discover(&cwd) {
-        Some(p) => match mimz::config::Config::load(&p) {
-            Ok(_) => failed |= line(Status::Ok, "mimz.toml", &format!("valid ({})", p.display())),
-            Err(e) => failed |= line(Status::Fail, "mimz.toml", &e),
-        },
-        None => {
+    match (cfg_path, cfg) {
+        (Some(p), Some(Ok(_))) => {
+            failed |= line(Status::Ok, "mimz.toml", &format!("valid ({})", p.display()))
+        }
+        (_, Some(Err(e))) => failed |= line(Status::Fail, "mimz.toml", &e),
+        _ => {
             failed |= line(
                 Status::Info,
                 "mimz.toml",

@@ -11,6 +11,11 @@ fn from_ir(text: &str) -> String {
 
 /// Source -> check -> elaborate (`top`) -> lower -> optimize -> Verilog.
 fn from_src(src: &str, top: Option<&str>) -> String {
+    emit(&lowered(src, top)).text
+}
+
+/// Source -> check -> elaborate (`top`) -> lower -> optimize -> IR.
+fn lowered(src: &str, top: Option<&str>) -> crate::ir::Module {
     let file = crate::parser::parse(crate::lexer::lex(src).expect("lexes")).expect("parses");
     crate::checker::check(std::slice::from_ref(&file)).expect("checks clean");
     let design = crate::elaborate::elaborate_project_with_mode(
@@ -23,7 +28,7 @@ fn from_src(src: &str, top: Option<&str>) -> String {
     let mut m = crate::ir::lower(&design);
     crate::ir::opt::optimize(&mut m);
     assert!(crate::ir::validate::validate(&m).is_empty());
-    emit(&m).text
+    m
 }
 
 const ADD: &str = "module m\nport in a[0:8]\nport in b[0:8]\nport out o[0:9]\n\n";
@@ -174,6 +179,125 @@ fn an_extern_with_tamil_names_matches_the_ast_emitter() {
     assert!(ast_v.contains(&format!("{m} #(.{p}(4)) ")), "{ast_v}");
     assert!(ast_v.contains(&format!(".{c}(clk)")), "{ast_v}");
     assert!(ast_v.contains(&format!(".{o}(")), "{ast_v}");
+}
+
+/// The AST emitter (`mimz compile`) over the same source.
+fn ast_verilog(src: &str) -> String {
+    let file = crate::parser::parse(crate::lexer::lex(src).unwrap()).unwrap();
+    let mut asts = vec![file];
+    crate::emit_verilog::transliterate(&mut asts);
+    let project = crate::emit_verilog::Project::from_files(&asts).unwrap();
+    crate::emit_verilog::emit(&project, &asts).unwrap()
+}
+
+/// The connection name written for `signal`, as in `.name(signal)`.
+fn conn_for(text: &str, signal: &str) -> String {
+    let tail = format!("{signal})");
+    text.split('.')
+        .find_map(|p| {
+            let (name, rest) = p.split_once('(')?;
+            let ident = !name.is_empty() && name.chars().all(|c| c.is_alphanumeric() || c == '_');
+            (ident && rest.starts_with(&tail)).then(|| name.to_string())
+        })
+        .unwrap_or_else(|| panic!("no `.x({signal})` in:\n{text}"))
+}
+
+/// The module emitted twice: with only its own names (`emit`) and with the
+/// project's name map, as `mimz build` does (`emit_with_names`).
+fn plain_and_project(src: &str, top: &str) -> (String, String) {
+    let file = crate::parser::parse(crate::lexer::lex(src).unwrap()).unwrap();
+    let names = crate::emit_verilog::project_names(std::slice::from_ref(&file));
+    let m = lowered(src, Some(top));
+    (
+        emit(&m).text,
+        super::verilog::emit_with_names(&m, &names).text,
+    )
+}
+
+#[test]
+fn tamil_extern_ports_that_romanize_alike_stay_distinct_like_the_ast_emitter() {
+    // ந and ன both romanize to `n`: `நீ` and `னீ` are both `nii`. `னீ` is
+    // declared first, so a pin allocation in sorted-name order would swap them.
+    let src = "extern module E {\n  in னீ: bit\n  in நீ: bit\n  out y: bit\n}\n\nmodule M {\n  in a: bit\n  in b: bit\n  out o: bit\n  let u = E() { நீ: a, னீ: b }\n  o = u.y\n}\n";
+    let (plain, project) = plain_and_project(src, "M");
+    let ast = ast_verilog(src);
+    for text in [&plain, &project] {
+        assert_eq!(conn_for(text, "b"), conn_for(&ast, "b"), "{text}");
+        assert_eq!(conn_for(text, "a"), conn_for(&ast, "a"), "{text}");
+        assert_ne!(conn_for(text, "a"), conn_for(text, "b"), "{text}");
+    }
+}
+
+#[test]
+fn tamil_extern_parameters_that_romanize_alike_stay_distinct() {
+    let src = "extern module E(நீ: int = 1, னீ: int = 2) {\n  in a: bit\n  out y: bit\n}\n\nmodule M {\n  in a: bit\n  out o: bit\n  let u = E(நீ: 3, னீ: 4) { a: a }\n  o = u.y\n}\n";
+    let (plain, project) = plain_and_project(src, "M");
+    let ast = ast_verilog(src);
+    for text in [&plain, &project] {
+        assert_eq!(conn_for(text, "3"), conn_for(&ast, "3"), "{text}");
+        assert_eq!(conn_for(text, "4"), conn_for(&ast, "4"), "{text}");
+        assert_ne!(conn_for(text, "3"), conn_for(text, "4"), "{text}");
+    }
+}
+
+/// `mimz build` uses the project's names: the parent's ASCII `a` already owns
+/// that spelling, so the AST emitter writes the extern's `அ` pin as `a_2`.
+#[test]
+fn project_names_make_the_backend_spell_externs_like_the_ast_emitter() {
+    let src = "extern module E {\n  in அ: bit\n  out y: bit\n}\n\nmodule M {\n  in a: bit\n  out o: bit\n  let u = E() { அ: a }\n  o = u.y\n}\n";
+    let (plain, project) = plain_and_project(src, "M");
+    let ast = ast_verilog(src);
+    assert_eq!(conn_for(&ast, "a"), "a_2", "{ast}");
+    assert_eq!(conn_for(&project, "a"), conn_for(&ast, "a"), "{project}");
+    // Without a project, `emit` keeps the per-extern fallback.
+    assert_eq!(conn_for(&plain, "a"), "a", "{plain}");
+}
+
+/// A Tamil clock declared before a port that romanizes alike: the AST pass
+/// allocates in declaration order, which the IR alone cannot recover.
+#[test]
+fn project_names_cover_a_clock_declared_before_a_colliding_port() {
+    let src = "extern module E {\n  clock நீ\n  in னீ: bit\n  out y: bit\n}\n\nmodule M {\n  clock clk\n  in b: bit\n  out o: bit\n  let u = E() { நீ: clk, னீ: b }\n  o = u.y\n}\n";
+    let (_, project) = plain_and_project(src, "M");
+    let ast = ast_verilog(src);
+    assert_eq!(
+        conn_for(&project, "clk"),
+        conn_for(&ast, "clk"),
+        "{project}"
+    );
+    assert_eq!(conn_for(&project, "b"), conn_for(&ast, "b"), "{project}");
+}
+
+#[test]
+fn an_aliased_name_is_kept_verbatim_and_an_unaliased_one_is_romanized() {
+    let mut m = lowered(TAMIL_EXTERN, Some("M"));
+    // Un-aliased: `verilog_name == module_name` (Tamil), emitted romanized.
+    assert!(emit(&m).text.contains(&format!("{} ", romanize("பிஎல்"))));
+    // Aliased with the same spelling: kept verbatim, not romanized.
+    for c in &mut m.cells {
+        if let crate::ir::CellKind::BlackBox { aliased, .. } = &mut c.kind {
+            *aliased = true;
+        }
+    }
+    assert!(emit(&m).text.contains("பிஎல் #("));
+}
+
+#[test]
+fn a_zero_width_port_is_a_limitation() {
+    let m = crate::ir::parse_line::parse("module m\nport out o[0:0]\n\n").expect("parses");
+    let f = crate::ir::failure::catch(Stage::Emit, false, || emit(&m)).map(|_| ());
+    let f = f.expect_err("zero-width port");
+    assert_eq!(f.kind, FailureKind::Limitation, "{}", f.message);
+}
+
+#[test]
+fn sign_extending_an_empty_operand_is_a_limitation() {
+    let ir =
+        "module m\nport in b[0:8]\nport out o[0:9]\n\ncell $add :0 a={}s b=b[0:8] out=o[0:9]s\n";
+    let m = crate::ir::parse_line::parse(ir).expect("parses");
+    let f = crate::ir::failure::catch(Stage::Emit, false, || emit(&m)).map(|_| ());
+    let f = f.expect_err("empty signed operand");
+    assert_eq!(f.kind, FailureKind::Limitation, "{}", f.message);
 }
 
 #[test]

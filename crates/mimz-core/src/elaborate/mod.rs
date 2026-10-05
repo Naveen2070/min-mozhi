@@ -182,13 +182,18 @@ pub struct ExternInstance {
     /// The real Verilog module to instantiate: the `extern module X = "Y"`
     /// alias when given, else `module_name`.
     pub verilog_name: String,
+    /// True exactly when the source wrote `= "..."` (even an alias equal to
+    /// `module_name`).
+    pub aliased: bool,
     /// Every parameter of the extern, folded for this instance (explicit
     /// argument, else the declared default), in declaration order.
     pub params: Vec<(String, i128)>,
     /// `(declared port name, connected flat Signal, declared direction)`,
     /// every port, clock and reset the extern module declares, in declaration
-    /// order; a clock/reset is an input connected to the parent signal it is
-    /// wired to (explicit connection, else the same-named parent signal).
+    /// order. A clock/reset is a `Dir::In`, 1-bit entry whose `Signal` is the
+    /// PARENT signal it is wired to (explicit connection, else the same-named
+    /// parent signal, no `{pfx}` flat wire of its own); an ordinary port's
+    /// `Signal` is the instance's own flat wire `{pfx}{port}`.
     pub ports: Vec<(String, Signal, crate::ast::Dir)>,
     /// The `let u = Extern() { .. }` instantiation's own source span —
     /// spans-everywhere is a core invariant (architecture.md), and this is

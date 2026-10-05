@@ -12,6 +12,43 @@ Compiler versions follow [SemVer](https://semver.org).
 
 ---
 
+## [Unreleased]
+
+Branch `phase-2-ir` (Phase 2, IR + synthesis track).
+
+### Added
+
+- **`mimz build`** - synthesize a design into a Lattice iCE40 bitstream:
+  check -> IR -> optimizer -> structural Verilog-2005 -> Yosys `synth_ice40`
+  -> nextpnr-ice40 -> icepack. `--board icebreaker` (iCEBreaker v1.0 pin
+  preset), `--pcf`, `--freq`, `-o`, `--work`, `--extern-src`; `[build]` in
+  `mimz.toml` (`board`, `pcf`, `toolchain`, `freq`). Needs the OSS CAD Suite
+  (`MIMZ_OSS_CAD`, `[build] toolchain` or PATH; `docs/BUILD.md`). On Windows
+  `synth_ice40` runs with `-noabc` (a Yosys bug on that platform). Guide
+  chapter 11.
+- **`mimz ir`** - print a module's IR (line or `--sexpr` form), optimized or
+  `--no-opt`, with `--module`, `--param` and `--stats`; lowering failures are
+  reported as an IR limitation or an internal compiler error.
+- The Min-Mozhi IR (`spec/07-ir.md`), its optimizer (constant folding, mux
+  simplification, dead-cell elimination) and an IR -> Verilog-2005 backend.
+- `mimz doctor` reports the synthesis tools (`yosys`, `nextpnr-ice40`,
+  `icepack`) as an optional section.
+- Diagnostics: `E0304` (an instance's omitted `clock`/`reset` has no
+  same-named parent signal to connect to, BUG-80); `E1303` (an
+  `extern module` alias that is not a Verilog identifier); `E1501`-`E1506` for
+  `mimz build` (unpinned port, PCF name not a port, unknown board, tool not
+  found, extern module without Verilog, unreadable or malformed PCF).
+- CI: a `synth` job runs the synthesis tests on Linux with a pinned OSS CAD
+  Suite (2026-10-01).
+
+### Fixed
+
+- BUG-80: an unconnected clock/reset with no same-named parent signal passed
+  `mimz check` and gave Verilog a floating net (now `E0304`). The
+  `tamil-pure` UART echo showcase had exactly this and is fixed.
+
+---
+
 ## [0.2.0] - 2026-08-29 · Language edition: Wingless Butterfly `wingless-butterfly-2026-1`
 
 > **Tag pending** - content frozen after the round-9 release gate went green

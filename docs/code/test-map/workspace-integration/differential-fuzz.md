@@ -1,4 +1,4 @@
-# Integration: differential fuzzing (`tests/differential_fuzz.rs`, 6 tests)
+# Integration: differential fuzzing (`tests/differential_fuzz.rs`, 8 tests)
 
 > Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
 
@@ -15,6 +15,8 @@ failure is reproducible. This is the test that found BUG-23.
 | `differential_fuzz_clocked_generates_checker_valid_programs`                    | the same guarantee for the clocked generator                                                                                                                       |
 | `task9_instance_port_connection_reaches_a_hoisting_expression_within_400_seeds` | round-8 Task 9: the clocked generator reaches a hoisting cross-instance port connection (BUG-70's shape) within the first 400 seeds                                |
 | `differential_fuzz_clocked_matches_icarus`                                      | …and clocked designs match Icarus cycle for cycle                                                                                                                  |
+| `differential_fuzz_clocked_ir_matches_kernel`                                   | the IR leg: generated clocked designs lowered to the IR and run by `ir::exec` match the event kernel cycle for cycle (rise-only corpus, same reset protocol)       |
+| `ir_fuzz_generator_reaches_every_lowerable_construct`                           | the IR leg's generator really emits every lowerable construct, so the IR check cannot quietly shrink to bare leaves                                                |
 
 `gen_special_leaves` is what decides which SHAPES the generator can reach at
 all - a `fn` call, a nested `fn` call (`inner{w}(x)` offered to the outer

@@ -5,8 +5,7 @@
 //! tokenizer/grammar.
 
 use super::{Bits, Cell, CellKind, Module, NetId, NetInfo};
-use crate::ast::Dir;
-use crate::ir::Edge;
+use crate::ast::{Dir, Edge};
 use std::collections::{BTreeMap, HashMap};
 
 pub fn parse(text: &str) -> Result<Module, String> {
@@ -305,13 +304,7 @@ fn parse_cell_kind(
         }
         other if other.starts_with("$dff[") => {
             let inner = bracket_arg(other, "$dff[")?;
-            let edge = match inner {
-                "Rise" => crate::ast::Edge::Rise,
-                "Fall" => crate::ast::Edge::Fall,
-                other_edge => {
-                    return Err(format!("unknown clock edge `{other_edge}` in `{other}`"));
-                }
-            };
+            let edge = parse_edge(inner, other)?;
             // `Dff::clock` is a `NetId` struct field, never printed by
             // `print_line` (only `edge` is) — a known, pre-approved
             // text-format lossiness (see Task 13 brief). Fabricate a
@@ -325,11 +318,7 @@ fn parse_cell_kind(
             let (edge, value) = inner
                 .split_once(':')
                 .ok_or_else(|| format!("expected `Edge:width'dvalue` inside `{other}`"))?;
-            let edge = match edge {
-                "Rise" => crate::ast::Edge::Rise,
-                "Fall" => crate::ast::Edge::Fall,
-                e => return Err(format!("unknown clock edge `{e}` in `{other}`")),
-            };
+            let edge = parse_edge(edge, other)?;
             let (width, dec) = value
                 .split_once("'d")
                 .ok_or_else(|| format!("malformed reset value in `{other}`"))?;
@@ -353,9 +342,10 @@ fn parse_cell_kind(
         }
         other if other.starts_with("$mem[") => {
             let inner = bracket_arg(other, "$mem[")?;
+            // `$mem[N]` is a rising-edge memory; `$mem[Rise:N]` spells the same
+            // thing out (the printer keeps the short form), `$mem[Fall:N]` is falling.
             let (edge, depth_str) = match inner.split_once(':') {
-                Some(("Fall", d)) => (Edge::Fall, d),
-                Some((e, _)) => return Err(format!("unknown clock edge `{e}` in `{other}`")),
+                Some((e, d)) => (parse_edge(e, other)?, d),
                 None => (Edge::Rise, inner),
             };
             let depth: u128 = depth_str
@@ -402,6 +392,11 @@ fn parse_cell_kind(
                     let list = rest
                         .strip_suffix(')')
                         .ok_or_else(|| format!("unclosed parameter list in `{other}`"))?;
+                    if list.is_empty() {
+                        return Err(format!(
+                            "empty parameter list in `{other}` (drop the `()` instead)"
+                        ));
+                    }
                     let params = list
                         .split(',')
                         .map(|kv| {
@@ -418,13 +413,20 @@ fn parse_cell_kind(
                 }
                 None => (inner, Vec::new()),
             };
-            let (module_name, verilog_name) = match head.split_once('=') {
-                Some((m, v)) => (m.to_string(), v.to_string()),
-                None => (head.to_string(), head.to_string()),
+            // `Name=verilog` is an explicit alias (`aliased`), even when the two
+            // names are equal; no `=` means no alias.
+            let (module_name, verilog_name, aliased) = match head.split_once('=') {
+                Some((_, "")) => return Err(format!("empty Verilog name after `=` in `{other}`")),
+                Some((m, v)) => (m.to_string(), v.to_string(), true),
+                None => (head.to_string(), head.to_string(), false),
             };
+            if module_name.is_empty() {
+                return Err(format!("`{other}` is missing the module name"));
+            }
             CellKind::BlackBox {
                 module_name,
                 verilog_name,
+                aliased,
                 params,
             }
         }
@@ -452,6 +454,15 @@ fn parse_cell_kind(
             ));
         }
     })
+}
+
+/// `Rise` or `Fall`, the one edge spelling shared by `$dff`, `$adff` and `$mem`.
+fn parse_edge(e: &str, op: &str) -> Result<Edge, String> {
+    match e {
+        "Rise" => Ok(Edge::Rise),
+        "Fall" => Ok(Edge::Fall),
+        _ => Err(format!("unknown clock edge `{e}` in `{op}`")),
+    }
 }
 
 /// Strips `prefix` and a trailing `]` off a bracketed op like

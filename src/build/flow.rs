@@ -33,6 +33,9 @@ pub enum FlowError {
         tail: String,
     },
     Io(String),
+    /// A Verilog file path holding `"`: Yosys's `-p` script has no escape for
+    /// it inside a quoted argument.
+    QuoteInPath(PathBuf),
 }
 
 pub fn yosys_script(top: &str, verilog_files: &[PathBuf], noabc: bool) -> String {
@@ -51,7 +54,8 @@ pub fn yosys_script(top: &str, verilog_files: &[PathBuf], noabc: bool) -> String
 /// `clk: 80.62 MHz (PASS at 12.00 MHz)` per clock, from nextpnr's log.
 /// nextpnr prints a pre-route estimate then the post-route result, so only
 /// the last line per clock is kept (clocks in first-seen order); nextpnr's
-/// `$...` suffix on a clock name is dropped.
+/// `$...` suffix on a clock name is dropped unless that would make two clocks
+/// share a name.
 pub fn max_freq_lines(log: &str) -> Vec<String> {
     let mut out: Vec<(String, String)> = Vec::new();
     for (_, rest) in log
@@ -61,14 +65,21 @@ pub fn max_freq_lines(log: &str) -> Vec<String> {
         let Some((clk, f)) = rest.split_once("': ") else {
             continue;
         };
-        let clk = clk.split('$').next().unwrap_or(clk).to_string();
-        let line = format!("{clk}: {}", f.trim());
-        match out.iter_mut().find(|(c, _)| *c == clk) {
-            Some(e) => e.1 = line,
-            None => out.push((clk, line)),
+        // Keyed by the full name so clocks differing only after a `$` stay apart.
+        let f = f.trim().to_string();
+        match out.iter_mut().find(|(c, _)| c == clk) {
+            Some(e) => e.1 = f,
+            None => out.push((clk.to_string(), f)),
         }
     }
-    out.into_iter().map(|(_, l)| l).collect()
+    let short = |c: &str| c.split('$').next().unwrap_or(c).to_string();
+    // Shortened names that collide fall back to the full nextpnr name.
+    out.iter()
+        .map(|(c, f)| {
+            let shared = out.iter().filter(|(o, _)| short(o) == short(c)).count() > 1;
+            format!("{}: {f}", if shared { c.clone() } else { short(c) })
+        })
+        .collect()
 }
 
 fn tail(path: &Path) -> String {
@@ -112,6 +123,13 @@ fn step(
 
 pub fn run(tc: &Toolchain, input: &FlowInput) -> Result<FlowReport, FlowError> {
     let io = |e: std::io::Error| FlowError::Io(e.to_string());
+    // Checked on the absolute path, exactly as the script will spell it.
+    for f in input.extern_files {
+        let abs = std::path::absolute(f).map_err(io)?;
+        if abs.to_string_lossy().contains('"') {
+            return Err(FlowError::QuoteInPath(abs));
+        }
+    }
     std::fs::create_dir_all(input.work).map_err(io)?;
     for f in [
         "yosys.log",
@@ -209,6 +227,45 @@ mod tests {
             s,
             "read_verilog \"top.v\" \"pll.v\"; synth_ice40 -top Blinker -json synth.json; write_verilog -noattr synth.v; tee -q -o stat.txt stat"
         );
+    }
+
+    #[test]
+    fn clocks_that_differ_only_after_a_dollar_are_kept_apart() {
+        let log = "\
+Info: Max frequency for clock 'clk$a': 10.00 MHz (PASS at 12.00 MHz)
+Info: Max frequency for clock 'clk$b': 20.00 MHz (PASS at 12.00 MHz)
+Info: Max frequency for clock 'clk$a': 11.00 MHz (FAIL at 12.00 MHz)
+";
+        assert_eq!(
+            max_freq_lines(log),
+            vec![
+                "clk$a: 11.00 MHz (FAIL at 12.00 MHz)".to_string(),
+                "clk$b: 20.00 MHz (PASS at 12.00 MHz)".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn a_quote_in_an_extern_path_is_rejected_before_anything_runs() {
+        let work = std::env::temp_dir().join(format!("mimz_flow_quote_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&work);
+        let externs = [PathBuf::from("dir").join("a\"b.v")];
+        let r = run(
+            &Toolchain { root: None },
+            &FlowInput {
+                top: "T",
+                verilog: "",
+                extern_files: &externs,
+                pcf: "",
+                device: "up5k",
+                package: "sg48",
+                freq_mhz: 12,
+                work: &work,
+                out_bin: &work.join("o.bin"),
+            },
+        );
+        assert!(matches!(r, Err(FlowError::QuoteInPath(p)) if p.to_string_lossy().contains('"')));
+        assert!(!work.exists(), "nothing is created before the check");
     }
 
     #[test]

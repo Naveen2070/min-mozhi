@@ -17,11 +17,8 @@ const EXPECTED_SKIPS: &[&str] = &[
     // `ir::exec` ignores `edge` (one global clock), so its trace differs
     // from a real-edge simulation by design (spec/07-ir.md section 3.6;
     // GAP-1 in docs/audit/gaps.md). These four were the only mismatches in
-    // the corpus; skipped by the mixed-edge test below, not by name.
-    "examples/english/dual_edge.mimz:DualEdge",
-    "examples/mixed/dual_edge.mimz:DualEdge",
-    "examples/tamil/dual_edge.mimz:DualEdge",
-    "examples/tanglish/dual_edge.mimz:DualEdge",
+    // the corpus; the mixed-edge test below skips any such module
+    // automatically, except `DualEdge`, which is checked shifted by one tick.
     // Extern fixtures: a `BlackBox` cell has no behavior to simulate.
     "tests/fixtures/extern/pll.mimz:ExternDemo",
     "tests/fixtures/extern/pll_alias.mimz:AliasDemo",
@@ -67,12 +64,27 @@ fn ir_verilog_matches_ir_exec_on_the_corpus() {
                 })
             };
             let mixed_edges = edges(Edge::Rise) && edges(Edge::Fall);
-            if opaque || wide || mixed_edges {
+            // `DualEdge` (`a` on rise <- d, `b` on fall <- a, `q = b`) is
+            // checked, shifted: Icarus passes `d` through both edges in the
+            // same tick (`q_t = d_t`), `ir::exec` updates `a` and `b` together
+            // (`q_t = d_(t-1)`), so Icarus `q_t` equals exec `q_(t+1)` (GAP-1
+            // in docs/audit/gaps.md). That holds only while `rst` is low at
+            // t+1 (exec's reset lags a tick the same way), so `rst` is high
+            // at tick 0 only. Any other mixed-edge module is still skipped.
+            let shifted = name == "DualEdge" && mixed_edges;
+            if opaque || wide || (mixed_edges && !shifted) {
                 skipped.push(at);
                 continue;
             }
             let e = mimz_core::backend::verilog::emit(&m);
-            let stim = stimulus(&m, 8);
+            let mut stim = stimulus(&m, 8);
+            if shifted {
+                for (t, tick) in stim.iter_mut().enumerate() {
+                    for (_, v) in tick.iter_mut().filter(|(n, _)| n == "rst") {
+                        *v = u128::from(t == 0);
+                    }
+                }
+            }
             let want = exec_trace(&m, &stim);
             let tb = testbench(&e, &clock_ports(&m), &stim);
             let v = std::env::temp_dir().join(format!("mimz_irv_{}.v", file_safe(&at)));
@@ -82,6 +94,15 @@ fn ir_verilog_matches_ir_exec_on_the_corpus() {
                 &e,
             );
             let _ = std::fs::remove_file(&v);
+            let (got, want) = if shifted {
+                // The 7 overlapping ticks; the oracle must actually move.
+                let qs: std::collections::BTreeSet<u128> =
+                    want.iter().flatten().map(|(_, v)| *v).collect();
+                assert!(qs.len() > 2, "{at}: q never moves");
+                (got[..7].to_vec(), want[1..].to_vec())
+            } else {
+                (got, want)
+            };
             assert_eq!(
                 got, want,
                 "{at}: Icarus trace differs from ir::exec\n--- verilog ---\n{}",
