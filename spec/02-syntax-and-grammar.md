@@ -1,6 +1,6 @@
 # Min-Mozhi - Syntax & Grammar
 
-> **Spec v0.2.32.** English flavor shown; see `03-keywords-trilingual.md` for
+> **Spec v0.2.33.** English flavor shown; see `03-keywords-trilingual.md` for
 > Tanglish/Tamil keyword equivalents. The grammar is identical across all
 > three flavors. File extension: **`.mimz`** · CLI: **`mimz`**.
 
@@ -1639,6 +1639,12 @@ because the `_` alternative provides no binding for `x`.
 
 ## Changelog
 
+- **v0.2.33 (2026-10-06):** **omitted child `clock`/`reset` must have a
+  parent signal** (section 1.5, instances). An instance that leaves out a
+  child's `clock` or `reset` connection needs a same-named `clock`/`reset`
+  (or `in`/`out`/`wire`/`reg`) in the parent; otherwise the new code
+  **`E0304`** (BUG-80). Previously the child got a floating net. Recorded late:
+  the rule landed 2026-10-03 without a version bump (R5).
 - **v0.2.32 (2026-10-05):** **`extern module` alias must be a Verilog
   identifier** (section 1.5c). `extern module X = "alias"` now requires
   `alias` to be `[A-Za-z_][A-Za-z0-9_$]*` and not a Verilog-2005 keyword;

@@ -22,9 +22,13 @@ this page is the human ledger).
 > (2026-07-10 - 2026-07-11) after the workspace split landed; fixed by
 > adding `--workspace` to its clippy/test/doc/build steps.
 
-**1678 tests** as of 2026-10-05 (`cargo test --workspace`; the count is
+**1687 tests** as of 2026-10-06 (`cargo test --workspace`; the count is
 re-derived from source by `tests/docs_sync.rs`, so this page must track it —
-+11 from Task 9 batch B (synthesis v1 phase 1): `tests/cli.rs`'s
++6 from the final-review minors (Task 10): `tests/cli.rs`'s `build_reports_two_pins_for_one_port`; `src/build/pins.rs`'s `two_different_pins_for_one_port_are_a_conflict` and `the_same_pin_written_twice_is_not_a_conflict`; `src/commands/build.rs`'s `the_missing_tool_help_matches_where_the_tools_were_looked_for`; `crates/mimz-core/src/backend/tests.rs`'s `project_names_spell_top_level_ports_like_the_ast_emitter` and `a_memory_too_deep_for_logic_is_a_limitation`. Previously, as of 2026-10-06 at 1681: +3 from the final branch review (I1/I2): `tests/cli.rs`'s
+`build_explains_a_pcf_line_that_names_a_whole_vector_port`;
+`src/commands/build.rs`'s `a_pcf_name_that_is_a_port_but_not_a_pin_gets_a_bit_hint`
+and `the_target_line_names_the_chip_even_without_a_board`. Previously, as of
+2026-10-05 at 1678: +11 from Task 9 batch B (synthesis v1 phase 1): `tests/cli.rs`'s
 `build_flag_board_beats_config_board`, `build_config_board_is_used_without_the_flag`,
 `build_flag_pcf_beats_config_pcf`, `build_rejects_a_zero_config_freq`,
 `build_shows_the_source_name_of_an_unpinned_tamil_port` and
@@ -450,9 +454,9 @@ against a bare bundle-typed `fn` parameter inside that fn's own body
 
 | Where it lives                                      |    Count | Kind                                                                                                      |
 | --------------------------------------------------- | -------: | --------------------------------------------------------------------------------------------------------- |
-| `crates/mimz-core/src/**` (lib unit)                |     1040 | in-process, `#[cfg(test)] mod tests`                                                                      |
+| `crates/mimz-core/src/**` (lib unit)                |     1042 | in-process, `#[cfg(test)] mod tests`                                                                      |
 | `crates/mimz-sim/src/**` (lib unit)                 |       90 | in-process                                                                                                |
-| `src/**` (mimz shell crate, lib unit)               |       75 | in-process (`build`, `config`, `emulate`, `project`)                                                      |
+| `src/**` (mimz shell crate, lib unit)               |       80 | in-process (`build`, `config`, `emulate`, `project`)                                                      |
 | `src/lsp.rs` + `src/main.rs` (bin/lib `mod lsp`)    |        7 | in-process (`lsp`)                                                                                        |
 | `src/bin/mimz-bench/` (bin unit)                    |        6 | in-process                                                                                                |
 | `crates/mimz-wasm` (lib unit)                       |        0 | no unit tests - covered via `wasm_parity`                                                                 |
@@ -460,7 +464,7 @@ against a bare bundle-typed `fn` parameter inside that fn's own body
 | `crates/mimz-sim/tests/sim_errors.rs`               |       81 | crate integration                                                                                         |
 | `crates/mimz-core/tests/width_rules_conformance.rs` |        2 | crate integration                                                                                         |
 | `crates/mimz-core/tests/failure_hook.rs`            |        1 | crate integration                                                                                         |
-| `tests/cli.rs`                                      |       34 | workspace integration (runs the binary)                                                                   |
+| `tests/cli.rs`                                      |       36 | workspace integration (runs the binary)                                                                   |
 | `tests/compile_string.rs`                           |       14 | workspace integration (in-process lib)                                                                    |
 | `tests/config.rs`                                   |        7 | workspace integration                                                                                     |
 | `tests/differential_fuzz.rs`                        |        8 | workspace integration (generative + Icarus + IR)                                                          |
@@ -490,7 +494,7 @@ against a bare bundle-typed `fn` parameter inside that fn's own body
 | `tests/test_run.rs`                                 |        9 | workspace integration                                                                                     |
 | `tests/translate.rs`                                |       15 | workspace integration                                                                                     |
 | `tests/wasm_parity.rs`                              |        2 | workspace integration (CLI vs. WASM)                                                                      |
-| **Total**                                           | **1678** |                                                                                                           |
+| **Total**                                           | **1687** |                                                                                                           |
 
 Fixture counts (current): **120** error fixtures (`tests/fixtures/errors/*.mimz`,
 plus a `README.md` and the `e0110_support/` helper folder) · **8** grammar

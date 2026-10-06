@@ -26,8 +26,10 @@ pub struct Emitted {
     pub ports: Vec<(String, String, u32, Dir)>,
 }
 
-/// Deepest memory emitted as a Verilog array.
-const MAX_MEM_DEPTH: u128 = 1 << 20;
+/// Deepest memory emitted as a Verilog array. v1 builds memory from logic
+/// (no block RAM), so anything deeper cannot fit an iCE40 and would only make
+/// Yosys unroll a huge init loop before nextpnr runs out of cells.
+const MAX_MEM_DEPTH: u128 = 1 << 16;
 
 /// Emits a validated, flat `module` as one Verilog-2005 module. An
 /// unsupported construct is reported with `ir::failure::limitation`.
@@ -98,11 +100,7 @@ fn literal(v: &ConstVal) -> String {
 impl Emitter<'_> {
     fn run(mut self) -> Emitted {
         let m = self.m;
-        self.port_names = m
-            .ports
-            .iter()
-            .map(|(n, _, _)| legal_name(n, &mut self.used))
-            .collect();
+        self.port_names = m.ports.iter().map(|(n, _, _)| self.port_name(n)).collect();
         for (c, cell) in m.cells.iter().enumerate() {
             let is_reg = matches!(cell.kind, CellKind::Dff { .. } | CellKind::Adff { .. });
             for (pin, bits) in output_pins(m, cell) {
@@ -149,6 +147,22 @@ impl Emitter<'_> {
             .map(|((n, b, d), v)| (n.clone(), v, b.width(), *d))
             .collect();
         Emitted { text, top, ports }
+    }
+
+    /// A top-level port's Verilog name. With a project map it is the spelling
+    /// `mimz compile` writes, so a name copied from that output works in a PCF;
+    /// a keyword or a clash with an earlier name falls back to `legal_name`.
+    fn port_name(&mut self, n: &str) -> String {
+        if let Some(p) = self.project {
+            let s = p.get(n);
+            let plain = s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                && !s.starts_with(|c: char| c.is_ascii_digit())
+                && !super::VERILOG_KEYWORDS.contains(&s.as_str());
+            if plain && self.used.insert(s.clone()) {
+                return s;
+            }
+        }
+        legal_name(n, &mut self.used)
     }
 
     /// The source name when every net of the vector carries the same one,

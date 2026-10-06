@@ -35,7 +35,7 @@ Branch `phase-2-ir` (Phase 2, IR + synthesis track).
   `icepack`) as an optional section.
 - Diagnostics: `E0304` (an instance's omitted `clock`/`reset` has no
   same-named parent signal to connect to, BUG-80); `E1303` (an
-  `extern module` alias that is not a Verilog identifier); `E1501`-`E1506` for
+  `extern module` alias that is not a Verilog identifier); `E1501`-`E1507` for
   `mimz build` (unpinned port, PCF name not a port, unknown board, tool not
   found, extern module without Verilog, unreadable or malformed PCF).
 - CI: a `synth` job runs the synthesis tests on Linux with a pinned OSS CAD

@@ -234,6 +234,7 @@ Flashing the board (`iceprog Blinker.bin`) is not part of `mimz build` yet.
 | `E1504` | `yosys`, `nextpnr-ice40` or `icepack` not found            |
 | `E1505` | an `extern module` has no Verilog source (`--extern-src`)  |
 | `E1506` | the PCF file cannot be read, or a line is not `set_io`     |
+| `E1507` | the PCF gives one port bit two different pins              |
 
 `mimz explain E1501` (and the others) gives the long form. If a tool itself
 fails, `mimz build` prints the tool's name, the path of its log and the log's
@@ -241,7 +242,10 @@ last lines.
 
 ### Limits (v1)
 
-- One FPGA family (iCE40) and one board preset (iCEBreaker).
+- One FPGA family (iCE40) and one board preset (iCEBreaker). Without
+  `--board`, `mimz build` still targets the iCE40 UP5K in the SG48 package (the
+  first output line says `target: up5k sg48`); a different iCE40 chip would
+  give a `.bin` that does not fit it.
 - Memories are built from logic, not the FPGA's block RAM.
 - No timing constraints beyond `--freq`.
 - Simulation and hardware can differ for a design with **more than one reset**

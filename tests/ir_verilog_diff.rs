@@ -16,9 +16,9 @@ const EXPECTED_SKIPS: &[&str] = &[
     // Mixed rising and falling registers (`on rise` feeds `on fall`):
     // `ir::exec` ignores `edge` (one global clock), so its trace differs
     // from a real-edge simulation by design (spec/07-ir.md section 3.6;
-    // GAP-1 in docs/audit/gaps.md). These four were the only mismatches in
-    // the corpus; the mixed-edge test below skips any such module
-    // automatically, except `DualEdge`, which is checked shifted by one tick.
+    // GAP-1 in docs/audit/gaps.md). The mixed-edge test below skips any such
+    // module automatically, except `DualEdge`, which is checked shifted by
+    // one tick; so none are listed here.
     // Extern fixtures: a `BlackBox` cell has no behavior to simulate.
     "tests/fixtures/extern/pll.mimz:ExternDemo",
     "tests/fixtures/extern/pll_alias.mimz:AliasDemo",
