@@ -100,7 +100,7 @@ is a real terminal — see [quirks](/handbook/06-quirks).
 Runs Yosys, nextpnr-ice40 and icepack from the OSS CAD Suite (found through
 `MIMZ_OSS_CAD`, `mimz.toml [build] toolchain` or PATH). Every top-level port
 needs a pin: from the board preset, a `--pcf` file (`set_io <port> <pin>`), or
-both. Problems are `E1501`-`E1506`; `mimz explain E1501` for the long form.
+both. Problems are `E1501`-`E1507`; `mimz explain E1501` for the long form.
 The guide's toolchain chapter has the full walkthrough, including the
 iCEBreaker pin table.
 

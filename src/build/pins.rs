@@ -12,6 +12,12 @@ pub enum PinError {
     Unpinned(Vec<String>),
     /// User PCF names that are not top-level ports.
     NotAPort(Vec<String>),
+    /// The user PCF gives one port bit two different pins (Verilog bit name).
+    Conflict {
+        name: String,
+        first: String,
+        second: String,
+    },
 }
 
 /// `(name, pin)` of every `set_io` line; `#` comments, blank lines and
@@ -84,8 +90,19 @@ pub fn resolve(
             }
         }
     }
+    let mut from_user: BTreeMap<&String, &String> = BTreeMap::new();
     for (n, p) in user {
-        pins.insert(alias[n].clone(), p.clone());
+        let v = &alias[n];
+        if let Some(first) = from_user.insert(v, p)
+            && first != p
+        {
+            return Err(PinError::Conflict {
+                name: v.clone(),
+                first: first.clone(),
+                second: p.clone(),
+            });
+        }
+        pins.insert(v.clone(), p.clone());
     }
     let missing: Vec<String> = required
         .iter()
@@ -187,6 +204,31 @@ mod tests {
             let got = resolve(None, &[(name.into(), "11".into())], &p).unwrap();
             assert_eq!(got, vec![("vilakku".into(), "11".into())]);
         }
+    }
+
+    #[test]
+    fn two_different_pins_for_one_port_are_a_conflict() {
+        // `led` and its Verilog spelling are the same port.
+        let p = ports(&[("விளக்கு", "vilakku", 1)]);
+        let user = vec![
+            ("விளக்கு".to_string(), "11".to_string()),
+            ("vilakku".to_string(), "37".to_string()),
+        ];
+        let err = resolve(None, &user, &p).unwrap_err();
+        assert!(matches!(
+            err,
+            PinError::Conflict { ref name, ref first, ref second }
+                if name == "vilakku" && first == "11" && second == "37"
+        ));
+    }
+
+    #[test]
+    fn the_same_pin_written_twice_is_not_a_conflict() {
+        let user = vec![
+            ("led".to_string(), "11".to_string()),
+            ("led".to_string(), "11".to_string()),
+        ];
+        assert!(resolve(None, &user, &ports(&[("led", "led", 1)])).is_ok());
     }
 
     #[test]

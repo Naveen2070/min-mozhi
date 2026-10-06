@@ -1,8 +1,10 @@
 //! `mimz build <file>` - synthesize a design into an iCE40 bitstream:
 //! check -> lower -> optimize -> IR Verilog -> pins -> Yosys -> nextpnr ->
-//! icepack. Every user-fixable failure is an `E15xx` error with a `help:`
-//! line (docs/code/06-diagnostics.md); a tool failure names the tool, its
-//! log and the last log lines.
+//! icepack. Every problem with the design, pins, board or tools is an
+//! `E15xx` error with a `help:` line (docs/code/06-diagnostics.md). Bad flag
+//! or config values (`freq = 0`, a `"` in an extern path) and I/O errors are
+//! plain `error:` + `= help:` without a code; a tool failure names the tool,
+//! its log and the last log lines.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -77,6 +79,44 @@ fn source_label(ports: &[(String, String, u32)], verilog_bit: &str) -> String {
     verilog_bit.to_string()
 }
 
+/// E1504's help. With a suite root PATH is never searched, so pointing at
+/// PATH would mislead; name the folder that was checked instead.
+fn tool_missing_help(tc: &Toolchain, tool: &str) -> String {
+    match &tc.root {
+        Some(r) => format!(
+            "no `{tool}` in {} (from MIMZ_OSS_CAD or `[build] toolchain`; PATH is not searched then): point it at the OSS CAD Suite folder that contains `bin/`, or unset it to use PATH; see docs/BUILD.md",
+            r.join("bin").display()
+        ),
+        None => "install the OSS CAD Suite and put its bin on PATH or set MIMZ_OSS_CAD (or `[build] toolchain`); see docs/BUILD.md. `mimz doctor` shows what was found".to_string(),
+    }
+}
+
+/// The chip being built for. Without `--board` it is always UP5K/SG48, so say so.
+fn target_line(board: Option<&Board>) -> String {
+    match board {
+        Some(b) => format!("target: {} {} (board {})", b.device, b.package, b.name),
+        None => "target: up5k sg48 (default, no --board; other iCE40 chips are not supported yet)"
+            .to_string(),
+    }
+}
+
+/// Why a PCF name that *is* a port (or a bit of one) still matched no pin:
+/// `leds` for a vector, `led[0]` for a 1-bit port, `leds[9]` past the end.
+/// `ports` is `(source, verilog, width)`; `None` when the name is no port.
+fn bit_hint(ports: &[(String, String, u32)], name: &str) -> Option<String> {
+    let base = name.split('[').next().unwrap_or(name);
+    let (src, v, w) = ports.iter().find(|(s, v, _)| s == base || v == base)?;
+    let n = if base == src { src } else { v };
+    Some(if *w == 1 {
+        format!("`{n}` is a 1-bit port; pin it as `{n}`")
+    } else {
+        format!(
+            "`{n}` is a {w}-bit port; pin each bit as `{n}[0]`..`{n}[{}]`",
+            w - 1
+        )
+    })
+}
+
 pub(crate) fn build_file(o: BuildOpts) -> ExitCode {
     let l = match lower_project(&PipelineOpts {
         path: o.path,
@@ -104,7 +144,7 @@ pub(crate) fn build_file(o: BuildOpts) -> ExitCode {
                         "unknown board `{name}` (known: {})",
                         boards::names().join(", ")
                     ),
-                    "pick a listed board, or leave --board out and pin every port with --pcf <file>",
+                    "pick a listed board, or leave --board out (builds for iCE40 UP5K SG48) and pin every port with --pcf <file>",
                 );
             }
         },
@@ -212,10 +252,36 @@ pub(crate) fn build_file(o: BuildOpts) -> ExitCode {
         }
         Err(PinError::NotAPort(names)) => {
             let real: Vec<String> = emitted.ports.iter().map(|p| p.0.clone()).collect();
+            let hints: Vec<String> = names.iter().filter_map(|n| bit_hint(&ports, n)).collect();
+            let msg = if hints.len() == names.len() {
+                format!("PCF names {} which matches no port bit", quoted(&names))
+            } else {
+                format!("PCF names {} which is not a top-level port", quoted(&names))
+            };
+            let help = if hints.is_empty() {
+                format!("the top module `{}` has ports {}", l.top, quoted(&real))
+            } else {
+                format!(
+                    "{}; the top module `{}` has ports {}",
+                    hints.join("; "),
+                    l.top,
+                    quoted(&real)
+                )
+            };
+            return build_error("E1502", &msg, &help);
+        }
+        Err(PinError::Conflict {
+            name,
+            first,
+            second,
+        }) => {
             return build_error(
-                "E1502",
-                &format!("PCF names {} which is not a top-level port", quoted(&names)),
-                &format!("the top module `{}` has ports {}", l.top, quoted(&real)),
+                "E1507",
+                &format!(
+                    "PCF gives `{}` two different pins: {first} and {second}",
+                    source_label(&ports, &name)
+                ),
+                "keep one `set_io` line for each port bit (a port's source and Verilog spellings are the same port)",
             );
         }
         Err(e @ PinError::BadLine { .. }) => {
@@ -231,7 +297,7 @@ pub(crate) fn build_file(o: BuildOpts) -> ExitCode {
             return build_error(
                 "E1504",
                 &format!("`{tool}` not found"),
-                "install the OSS CAD Suite and put its bin on PATH or set MIMZ_OSS_CAD (or `[build] toolchain`); see docs/BUILD.md. `mimz doctor` shows what was found",
+                &tool_missing_help(&tc, tool),
             );
         }
     }
@@ -250,6 +316,9 @@ pub(crate) fn build_file(o: BuildOpts) -> ExitCode {
         .unwrap_or_else(|| dir.join(format!("{}.bin", emitted.top)));
     let (device, package) = board.map_or(("up5k", "sg48"), |b| (b.device, b.package));
     let freq_mhz = resolve_freq(o.freq, o.cfg_freq, board.map(|b| b.freq_mhz));
+    if !o.quiet {
+        println!("{}", target_line(board));
+    }
     let result = flow::run(
         &tc,
         &FlowInput {
@@ -281,7 +350,7 @@ pub(crate) fn build_file(o: BuildOpts) -> ExitCode {
         Err(FlowError::ToolMissing(t)) => build_error(
             "E1504",
             &format!("`{t}` not found"),
-            "install the OSS CAD Suite and put its bin on PATH or set MIMZ_OSS_CAD; see docs/BUILD.md",
+            &tool_missing_help(&tc, &t),
         ),
         Err(FlowError::ToolFailed { tool, log, tail }) => {
             eprintln!("error: {tool} failed (log: {})", log.display());
@@ -312,6 +381,56 @@ mod tests {
         assert_eq!(resolve_freq(None, Some(30), Some(16)), 30);
         assert_eq!(resolve_freq(None, None, Some(16)), 16);
         assert_eq!(resolve_freq(None, None, None), 12);
+    }
+
+    #[test]
+    fn the_missing_tool_help_matches_where_the_tools_were_looked_for() {
+        let suite = Toolchain {
+            root: Some(PathBuf::from("suite")),
+        };
+        let h = tool_missing_help(&suite, "yosys");
+        assert!(
+            h.contains("PATH is not searched") && h.contains("bin"),
+            "{h}"
+        );
+        assert!(!h.contains("put its bin on PATH"), "{h}");
+        let path = tool_missing_help(&Toolchain { root: None }, "yosys");
+        assert!(path.contains("put its bin on PATH"), "{path}");
+    }
+
+    #[test]
+    fn the_target_line_names_the_chip_even_without_a_board() {
+        let ice = boards::board("icebreaker").unwrap();
+        assert_eq!(
+            target_line(Some(ice)),
+            "target: up5k sg48 (board icebreaker)"
+        );
+        let none = target_line(None);
+        assert!(
+            none.contains("up5k sg48") && none.contains("default"),
+            "{none}"
+        );
+    }
+
+    #[test]
+    fn a_pcf_name_that_is_a_port_but_not_a_pin_gets_a_bit_hint() {
+        let ports = vec![
+            ("leds".to_string(), "leds".to_string(), 5),
+            ("led".to_string(), "led".to_string(), 1),
+        ];
+        assert_eq!(
+            bit_hint(&ports, "leds").unwrap(),
+            "`leds` is a 5-bit port; pin each bit as `leds[0]`..`leds[4]`"
+        );
+        assert_eq!(
+            bit_hint(&ports, "leds[7]").unwrap(),
+            "`leds` is a 5-bit port; pin each bit as `leds[0]`..`leds[4]`"
+        );
+        assert_eq!(
+            bit_hint(&ports, "led[0]").unwrap(),
+            "`led` is a 1-bit port; pin it as `led`"
+        );
+        assert_eq!(bit_hint(&ports, "ledd"), None);
     }
 
     #[test]

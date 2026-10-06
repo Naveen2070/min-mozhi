@@ -517,7 +517,7 @@ for the session).
   a leading digit prefixed `_`, duplicates numbered). `Emitted::ports` maps each
   IR port name to its Verilog name, so a later pin file can match by either.
 - It runs inside `ir::failure::catch(Stage::Emit, ..)`; `limitation` there (for
-  example a memory deeper than 2^20 words) is a `Limitation`, like in `Lower`.
+  example a memory deeper than 2^16 words) is a `Limitation`, like in `Lower`.
 - A black box's module name, parameter names and port names are spelled with
   the AST emitter's own allocator (`translit::NameAllocator`: romanized, `_2`
   on a clash). An explicit `= "alias"` name (`CellKind::BlackBox::aliased`) is
@@ -556,7 +556,9 @@ a machine without the suite):
 5. Pins: `build::pins::parse_pcf` (`E1506`: unreadable file or a bad line),
    then `pins::resolve(board, user, ports)` with `Emitted::ports` as
    `(IR name, Verilog name, width)`: the preset first, the user PCF over it;
-   `Unpinned` -> `E1501`, `NotAPort` -> `E1502`.
+   `Unpinned` -> `E1501`, `NotAPort` -> `E1502` (with a `bit_hint` for a vector
+   port named whole or an index past its end), `Conflict` (two different pins
+   for one port bit in the user PCF) -> `E1507`.
 6. Toolchain: `build::toolchain::Toolchain::discover` (`MIMZ_OSS_CAD` > `[build]
 toolchain` > PATH); a missing `yosys`/`nextpnr-ice40`/`icepack` -> `E1504`.
 7. `build::flow::run` in the work folder (`--work`, else
@@ -578,7 +580,7 @@ pcf`/`toolchain` and `[compile] verilog_files` resolve against the
 `mimz.toml` directory, `--pcf`/`--extern-src`/`--work` against the cwd.
 `mimz doctor` probes the three tools (Warn, never Fail).
 
-Codes `E1501`-`E1506` are build-stage codes (docs/code/06), with
+Codes `E1501`-`E1507` are build-stage codes (docs/code/06), with
 `mimz explain` entries; they are not checker codes. Tests: unit tests in
 `src/build/{boards,pins,toolchain,flow}.rs`; tool-free CLI errors in
 `tests/cli.rs` (`build_*`); with the suite, `tests/synth_flow.rs` (Yosys's

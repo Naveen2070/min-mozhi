@@ -1006,7 +1006,9 @@ const EXPLANATIONS: &[(&str, &str)] = &[
         "E1502 — PCF names something that is not a top-level port\n\n\
          A `set_io` line in your PCF names a signal that the top module does\n\
          not have as a port (often a typo, or an internal wire). A PCF may\n\
-         name a port by its source name or by its Verilog name.\n\n\
+         name a port by its source name or by its Verilog name. A vector\n\
+         port needs one line per bit (`leds[0]`, `leds[1]`, ...), not one\n\
+         line for the whole name.\n\n\
          Fix: correct the name to one of the top module's ports (the message\n\
          lists them) or delete the line.",
     ),
@@ -1015,8 +1017,8 @@ const EXPLANATIONS: &[(&str, &str)] = &[
         "E1503 — unknown board\n\n\
          `--board` (or `[build] board`) names a preset `mimz build` does not\n\
          have. The message lists the presets.\n\n\
-         Fix: pick a listed board, or leave `--board` out and give every pin\n\
-         in a PCF with `--pcf`.",
+         Fix: pick a listed board, or leave `--board` out (the build then\n\
+         targets iCE40 UP5K SG48) and give every pin in a PCF with `--pcf`.",
     ),
     (
         "E1504",
@@ -1045,6 +1047,16 @@ const EXPLANATIONS: &[(&str, &str)] = &[
          Fix: check the `--pcf` path (`[build] pcf` in mimz.toml is relative to\n\
          mimz.toml), and write each pin as `set_io <port> <pin>`, e.g.\n\
          `set_io led 11` or `set_io leds[2] 25`.",
+    ),
+    (
+        "E1507",
+        "E1507 — one port bit has two different pins\n\n\
+         The PCF has two `set_io` lines for the same port bit with different\n\
+         pins (a port's source name and its Verilog name count as the same\n\
+         port). `mimz build` cannot know which one you meant. The same pin\n\
+         written twice is fine; a PCF line overriding the board preset is\n\
+         fine too.\n\n\
+         Fix: keep one `set_io` line for that port bit.",
     ),
     // ----- Wxxxx: lint warnings -----
     (
