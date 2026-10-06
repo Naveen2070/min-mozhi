@@ -253,6 +253,27 @@ fn project_names_make_the_backend_spell_externs_like_the_ast_emitter() {
     assert_eq!(conn_for(&plain, "a"), "a", "{plain}");
 }
 
+/// Top-level port names: `mimz build` spells them as `mimz compile` does, so a
+/// name copied from the compile output works in a PCF.
+#[test]
+fn project_names_spell_top_level_ports_like_the_ast_emitter() {
+    let src = "module M {\n  in நீ: bit\n  in னீ: bit\n  out o: bit\n  o = நீ & னீ\n}\n";
+    let file = crate::parser::parse(crate::lexer::lex(src).unwrap()).unwrap();
+    let names = crate::emit_verilog::project_names(std::slice::from_ref(&file));
+    let m = lowered(src, Some("M"));
+    let ports = super::verilog::emit_with_names(&m, &names).ports;
+    let got: Vec<&str> = ports.iter().map(|p| p.1.as_str()).collect();
+    let ast = ast_verilog(src);
+    assert_eq!(got, ["nii", "nii_2", "o"], "{ports:?}");
+    assert!(
+        ast.contains("input wire nii,") && ast.contains("input wire nii_2,"),
+        "{ast}"
+    );
+    // Without a project the per-module fallback stays (`nii_1`).
+    let plain: Vec<String> = emit(&m).ports.iter().map(|p| p.1.clone()).collect();
+    assert_eq!(plain, ["nii", "nii_1", "o"]);
+}
+
 /// A Tamil clock declared before a port that romanizes alike: the AST pass
 /// allocates in declaration order, which the IR alone cannot recover.
 #[test]
@@ -280,6 +301,22 @@ fn an_aliased_name_is_kept_verbatim_and_an_unaliased_one_is_romanized() {
         }
     }
     assert!(emit(&m).text.contains("பிஎல் #("));
+}
+
+#[test]
+fn a_memory_too_deep_for_logic_is_a_limitation() {
+    // 65 536 words is the cap: far past what the iCE40's LUTs can hold anyway.
+    let deep = |d: u32| {
+        format!(
+            "module R {{\n  in ra: bits[17]\n  out rd: bits[8]\n  mem m: bits[8][{d}] = 0\n  rd = m[ra]\n}}\n"
+        )
+    };
+    let m = lowered(&deep(65_537), Some("R"));
+    let f = crate::ir::failure::catch(Stage::Emit, false, || emit(&m)).map(|_| ());
+    let f = f.expect_err("65537-word memory");
+    assert_eq!(f.kind, FailureKind::Limitation, "{}", f.message);
+    let ok = lowered(&deep(65_536), Some("R"));
+    assert!(emit(&ok).text.contains("module R"));
 }
 
 #[test]

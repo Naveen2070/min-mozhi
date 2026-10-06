@@ -511,6 +511,53 @@ fn build_reports_a_pcf_name_that_is_not_a_port() {
 }
 
 #[test]
+fn build_reports_two_pins_for_one_port() {
+    let dir = tempdir_with("blink.mimz", BLINK_OUT_ONLY);
+    std::fs::write(dir.join("p.pcf"), "set_io led 11\nset_io led 37\n").unwrap();
+    let out = mimz()
+        .args([
+            "build",
+            dir.join("blink.mimz").to_str().unwrap(),
+            "--pcf",
+            dir.join("p.pcf").to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{err}");
+    assert!(
+        err.contains("E1507") && err.contains("11") && err.contains("37"),
+        "{err}"
+    );
+}
+
+#[test]
+fn build_explains_a_pcf_line_that_names_a_whole_vector_port() {
+    let dir = tempdir_with(
+        "leds.mimz",
+        "module L {\n  out leds: bits[3]\n  leds = 0\n}\n",
+    );
+    std::fs::write(dir.join("p.pcf"), "set_io leds 25\n").unwrap();
+    let out = mimz()
+        .args([
+            "build",
+            dir.join("leds.mimz").to_str().unwrap(),
+            "--pcf",
+            dir.join("p.pcf").to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{err}");
+    assert!(err.contains("E1502"), "{err}");
+    assert!(
+        err.contains("`leds` is a 3-bit port; pin each bit as `leds[0]`..`leds[2]`"),
+        "{err}"
+    );
+    assert!(!err.contains("not a top-level port"), "{err}");
+}
+
+#[test]
 fn build_reports_a_missing_toolchain() {
     let dir = tempdir_with("blink.mimz", BLINK_OUT_ONLY);
     std::fs::write(dir.join("p.pcf"), "set_io led 11\n").unwrap();

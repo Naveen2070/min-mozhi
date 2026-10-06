@@ -1963,6 +1963,18 @@ module_name`, so `extern module Foo = "Foo"` was romanized too. Now
   `emit(&Module)` (tests, no project) keeps the per-extern fallback: it
   allocates among the extern's own names, declared ports first, clock/reset
   last.
+- ~~**Top-level port names differ between `mimz compile` and `mimz build`.**~~
+  **FIXED 2026-10-06** (Task 10, final-review M2). `legal_name` allocated per
+  module (`nii`, `nii_1`) while `compile` allocates project-wide (`nii`,
+  `nii_2`), so a name copied from the compile output failed in a PCF (E1502).
+  `emit_with_names` now spells a top port with the project map
+  (`Emitter::port_name`), falling back to `legal_name` for a keyword or a
+  clash. Pinned by `project_names_spell_top_level_ports_like_the_ast_emitter`.
+  Internal nets still use `legal_name` (not user-visible names).
+- ~~**Memory depth cap far above what logic can hold.**~~ **FIXED 2026-10-06**
+  (Task 10, M8). `MAX_MEM_DEPTH` 2^20 -> 2^16 words; a deeper memory is a
+  `Limitation` at emit time instead of a long Yosys unroll then a nextpnr
+  out-of-cells failure. Pinned by `a_memory_too_deep_for_logic_is_a_limitation`.
 - **OPEN: romanized names are not keyword-escaped (both emitters).** The
   earlier "keyword-escaped" claim was wrong: the AST emitter's
   `VERILOG_RESERVED` holds 24 words, so `romanize` can still produce a

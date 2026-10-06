@@ -128,6 +128,7 @@ not here - `ALL_SIM_CODES` lives in `crates/mimz-sim`, not `mimz-core`.
 | E1504 | `mimz build`: `yosys`, `nextpnr-ice40` or `icepack` not found                   |
 | E1505 | `mimz build`: an extern module has no Verilog source file                       |
 | E1506 | `mimz build`: PCF file unreadable or malformed line (not `set_io <name> <pin>`) |
+| E1507 | `mimz build`: the PCF gives one port bit two different pins                     |
 
 Grouping rule: E1101 deliberately covers the whole expected/found
 family - those messages share one translation shape; the codes that

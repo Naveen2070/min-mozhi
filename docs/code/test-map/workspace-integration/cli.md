@@ -1,4 +1,4 @@
-# Integration: CLI (`tests/cli.rs`, 34 tests - run the real binary)
+# Integration: CLI (`tests/cli.rs`, 36 tests - run the real binary)
 
 > Back to [Test Map Index](../index.md) · [Overview](../../10-test-map.md)
 
@@ -16,6 +16,8 @@ See `docs/code/13-tooling.md` for the full command reference.
 | `build_reports_an_unpinned_port_with_its_code`                | `mimz build` on a port with no pin exits 1 with `E1501` naming the port (no tools needed)                    |
 | `build_reports_an_unknown_board`                              | an unknown `--board` is `E1503` and lists the presets                                                        |
 | `build_reports_a_pcf_name_that_is_not_a_port`                 | a PCF line naming a non-port is `E1502`                                                                      |
+| `build_reports_two_pins_for_one_port`                         | two `set_io` lines with different pins for `led` is `E1507` naming both pins                                 |
+| `build_explains_a_pcf_line_that_names_a_whole_vector_port`    | `set_io leds 25` on a 3-bit port is `E1502` with a "pin each bit as `leds[0]`..`leds[2]`" hint               |
 | `build_reports_a_missing_toolchain`                           | a `MIMZ_OSS_CAD` with no tools is `E1504` naming `yosys`                                                     |
 | `build_reports_an_extern_without_verilog`                     | an extern module with no `--extern-src` is `E1505` naming `Pll`, exit 1                                      |
 | `build_resolves_config_verilog_files_against_mimz_toml`       | `[compile] verilog_files` is relative to `mimz.toml`, not the cwd (gets past E1505 to E1504)                 |

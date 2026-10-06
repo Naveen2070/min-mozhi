@@ -126,9 +126,12 @@ jobs:
 
       - name: Install OSS CAD Suite (pinned 2026-10-01)
         # Pinned so a new Yosys/nextpnr release cannot change results under us;
-        # bump the date deliberately (docs/BUILD.md).
+        # bump the date and the sha256 together, deliberately (docs/BUILD.md).
+        # The sha256 is the release asset's own digest (`gh api
+        # repos/YosysHQ/oss-cad-suite-build/releases/tags/2026-10-01`).
         run: |
           curl -fsSL -o oss.tgz https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2026-10-01/oss-cad-suite-linux-x64-20261001.tgz
+          echo "1c91249e9671666b58d94e2fe8a81e6103d37b254eab77bd82625802c208bf4d  oss.tgz" | sha256sum -c -
           tar -xzf oss.tgz
           rm oss.tgz
           echo "MIMZ_OSS_CAD=$PWD/oss-cad-suite" >> "$GITHUB_ENV"
