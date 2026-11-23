@@ -40,7 +40,7 @@ tokio = { version = "1", features = [
 tower-lsp = { version = "0.20", optional = true }
 # Shell-completion script generation (`mimz completions <shell>`, bin-only).
 # Pure Rust (builds on wasm32), so it needs no feature gate.
-clap_complete = "4.6.5"
+clap_complete = "4.6.12"
 # File-watcher for `mimz check --watch` (bin-only). Optional + behind the
 # `watch` feature: notify pulls OS inotify/fsevent/ReadDirectoryChanges APIs that
 # do not build on wasm32, so the WASM crate (default-features = false) excludes it.
