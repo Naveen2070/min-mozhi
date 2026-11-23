@@ -46,6 +46,7 @@ on:
       - "src/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - ".github/workflows/deploy-site.yml"
 
 # Least privilege (matches ci.yml): the token only reads the repo.
 permissions:
