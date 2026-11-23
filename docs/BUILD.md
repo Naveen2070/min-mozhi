@@ -215,8 +215,8 @@ const verilog = compileToVerilog(source); // throws on a compile error
 rustup target add wasm32-unknown-unknown
 
 # Install the CLI MATCHING the crate version (else wasm-bindgen errors):
-cargo tree -i wasm-bindgen -p mimz-wasm --depth 0   # shows e.g. v0.2.125
-cargo install wasm-bindgen-cli --version 0.2.125
+cargo tree -i wasm-bindgen -p mimz-wasm --depth 0   # shows e.g. v0.2.130
+cargo install wasm-bindgen-cli --version 0.2.130
 
 # Build the raw wasm, then generate Node glue and run the smoke test:
 cargo build -p mimz-wasm --target wasm32-unknown-unknown --release

@@ -54,7 +54,7 @@ The playground imports generated wasm-bindgen glue from `src/lib/wasm/`, which i
 **git-ignored and must be built from `crates/mimz-wasm`** before the playground
 works. See [`docs/BUILD.md`](../docs/BUILD.md) and the deploy workflow
 (`.github/workflows/deploy-site.yml`) for the exact, version-pinned commands
-(`wasm-bindgen` 0.2.125). Without it the rest of the site still builds; the
+(`wasm-bindgen` 0.2.130). Without it the rest of the site still builds; the
 playground island is the only thing that needs it.
 
 ## Deploy

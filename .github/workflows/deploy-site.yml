@@ -59,9 +59,6 @@ concurrency:
 env:
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-  # MUST equal the wasm-bindgen crate version mimz-wasm depends on, else
-  # wasm-bindgen errors. Check: cargo tree -i wasm-bindgen -p mimz-wasm.
-  WASM_BINDGEN_VERSION: "0.2.125"
 
 jobs:
   deploy:
@@ -81,7 +78,12 @@ jobs:
       - uses: Swatinem/rust-cache@eedcf2fb1c22f010a0eb66b92f378c110977f266 # v2
 
       - name: Install wasm-bindgen-cli (version-matched to the crate)
-        run: cargo install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION" --locked
+        # Read from Cargo.lock: the CLI must equal the wasm-bindgen crate
+        # version exactly, and a hand-pinned copy drifts on every dependabot bump.
+        run: |
+          v=$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p')
+          test -n "$v"
+          cargo install wasm-bindgen-cli --version "$v" --locked
 
       - name: Build mimz-wasm + generate the web glue
         run: |
