@@ -60,7 +60,7 @@ has **three spellings**, called flavors:
 | ------------ | ---------- | --------- | ----------- | ------- | ----------- |
 | English      | `module`   | `in`      | `out`       | `wire`  | `reg`       |
 | Tanglish     | `thoguthi` | `ulleedu` | `veliyeedu` | `kambi` | `pathivedu` |
-| Tamil script | `தொகுதி`   | `உள்ளீடு` | `வெளியீடு`  | `கம்பி` | `பதிவேடு`   |
+| Tamil script | `தொகுதி`   | `உள்ளீடு`   | `வெளியீடு`   | `கம்பி`  | `பதிவேடு`   |
 
 All three lex to the same token, so these two modules are identical to the
 compiler:

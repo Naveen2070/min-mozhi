@@ -6,35 +6,35 @@ One-page reference. The authoritative sources are
 
 ## Keywords - all three flavors
 
-| English   | Tanglish        | Tamil         | Used for                                                  |
-| --------- | --------------- | ------------- | --------------------------------------------------------- |
-| `module`  | `thoguthi`      | `தொகுதி`      | declare a module                                          |
-| `in`      | `ulleedu`       | `உள்ளீடு`     | input port                                                |
+| English   | Tanglish        | Tamil        | Used for                                                  |
+| --------- | --------------- | ------------ | --------------------------------------------------------- |
+| `module`  | `thoguthi`      | `தொகுதி`     | declare a module                                          |
+| `in`      | `ulleedu`       | `உள்ளீடு`      | input port                                                |
 | `out`     | `veliyeedu`     | `வெளியீடு`    | output port                                               |
 | `wire`    | `kambi`         | `கம்பி`       | combinational signal                                      |
-| `reg`     | `pathivedu`     | `பதிவேடு`     | register (memory)                                         |
+| `reg`     | `pathivedu`     | `பதிவேடு`    | register (memory)                                         |
 | `mem`     | `ninaivagam`    | `நினைவகம்`    | memory / register array                                   |
 | `clock`   | `thudippu`      | `துடிப்பு`    | clock signal                                              |
-| `reset`   | `meettamai`     | `மீட்டமை`     | reset signal                                              |
-| `async`   | `otthisaivatra` | `ஒத்திசைவற்ற` | asynchronous-reset modifier                               |
-| `on`      | `pothu`         | `போது`        | clocked block                                             |
-| `rise`    | `yetram`        | `ஏற்றம்`      | rising-edge selector                                      |
-| `fall`    | `irakkam`       | `இறக்கம்`     | falling-edge selector                                     |
+| `reset`   | `meettamai`     | `மீட்டமை`      | reset signal                                              |
+| `async`   | `otthisaivatra` | `ஒத்திசைவற்ற`  | asynchronous-reset modifier                               |
+| `on`      | `pothu`         | `போது`       | clocked block                                             |
+| `rise`    | `yetram`        | `ஏற்றம்`       | rising-edge selector                                      |
+| `fall`    | `irakkam`       | `இறக்கம்`      | falling-edge selector                                     |
 | `if`      | `enil`          | `எனில்`       | conditional                                               |
-| `else`    | `illaiyenil`    | `இல்லையெனில்` | else branch                                               |
-| `match`   | `thernthedu`    | `தேர்ந்தெடு`  | pattern match                                             |
-| `enum`    | `vagai`         | `வகை`         | enumeration                                               |
-| `let`     | `amai`          | `அமை`         | instantiate a module                                      |
-| `const`   | `maarili`       | `மாறிலி`      | compile-time constant                                     |
-| `repeat`  | `meendum`       | `மீண்டும்`    | compile-time unroll                                       |
-| `import`  | `serkka`        | `சேர்க்க`     | import a file (`include` alias)                           |
+| `else`    | `illaiyenil`    | `இல்லையெனில்`  | else branch                                               |
+| `match`   | `thernthedu`    | `தேர்ந்தெடு`   | pattern match                                             |
+| `enum`    | `vagai`         | `வகை`        | enumeration                                               |
+| `let`     | `amai`          | `அமை`        | instantiate a module                                      |
+| `const`   | `maarili`       | `மாறிலி`     | compile-time constant                                     |
+| `repeat`  | `meendum`       | `மீண்டும்`      | compile-time unroll                                       |
+| `import`  | `serkka`        | `சேர்க்க`      | import a file (`include` alias)                           |
 | `true`    | `mei`           | `மெய்`        | boolean literal                                           |
 | `false`   | `poi`           | `பொய்`        | boolean literal                                           |
-| `test`    | `sodhanai`      | `சோதனை`       | test block                                                |
+| `test`    | `sodhanai`      | `சோதனை`      | test block                                                |
 | `for`     | `kaaga`         | `க்காக`       | test instantiation                                        |
 | `tick`    | `kanam`         | `கணம்`        | advance a clock in a test                                 |
 | `expect`  | `uruthisei`     | `உறுதிசெய்`   | assert in a test                                          |
-| `and`     | `mattrum`       | `மற்றும்`     | logical and (`&&`)                                        |
+| `and`     | `mattrum`       | `மற்றும்`      | logical and (`&&`)                                        |
 | `or`      | `alladhu`       | `அல்லது`      | logical or (`\|\|`)                                       |
 | `not`     | `alla`          | `அல்ல`        | logical not (`!`)                                         |
 | `fn`      | `saarbu`        | `சார்பு`      | combinational function (`function` alias)                 |
@@ -42,15 +42,15 @@ One-page reference. The authoritative sources are
 | `default` | `iyalbu`        | `இயல்பு`      | fallback register assignment                              |
 | `bundle`  | `kattai`        | `கட்டை`       | named group of signals                                    |
 | `loop`    | `suzhal`        | `சுழல்`       | combinational or `on` loop                                |
-| `foreach` | `ovvondraga`    | `ஒவ்வொன்றாக`  | loop over a range or an array                             |
+| `foreach` | `ovvondraga`    | `ஒவ்வொன்றாக`   | loop over a range or an array                             |
 | `sync`    | `othisai`       | `ஒத்திசை`     | modifier for `sync loop`, and the `sync.*` CDC primitives |
 | `extern`  | `anniya`        | `அன்னிய`      | declare a Verilog module we do not compile                |
 | `assert`  | `valiyuruthu`   | `வலியுறுத்து` | hard runtime invariant                                    |
-| `cover`   | `alavidu`       | `அளவிடு`      | functional-coverage counter                               |
-| `sim`     | `paavnai`       | `பாவனை`       | hardware-emulation block                                  |
-| `bind`    | `inai`          | `இணை`         | connect a port to a peripheral inside `sim`               |
+| `cover`   | `alavidu`       | `அளவிடு`     | functional-coverage counter                               |
+| `sim`     | `paavnai`       | `பாவனை`      | hardware-emulation block                                  |
+| `bind`    | `inai`          | `இணை`        | connect a port to a peripheral inside `sim`               |
 | `speed`   | `vegam`         | `வேகம்`       | set the emulated clock rate inside `sim`                  |
-| `syntax`  | `ilakkanam`     | `இலக்கணம்`    | grammar directive                                         |
+| `syntax`  | `ilakkanam`     | `இலக்கணம்`     | grammar directive                                         |
 | `thamizh` | `thamizh`       | `தமிழ்`       | thamizh word-order profile                                |
 
 That is the complete active keyword set - 44 words. The table itself lives

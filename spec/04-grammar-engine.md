@@ -120,14 +120,14 @@ Only **clause-level** constructs flip - the places where English order fights
 Tamil grammar. Declarations, expressions, operators, and types stay identical
 (they are not sentences; flipping them buys nothing and costs familiarity).
 
-| Construct     | code-order                      | thamizh-order                                          | Reading                  |
-| ------------- | ------------------------------- | ------------------------------------------------------ | ------------------------ |
-| conditional   | `enil <cond> { }`               | `<cond> enil { }`                                      | _timer == 0 எனில் …_     |
-| alternative   | `illaiyenil { }`                | `illaiyenil { }` (unchanged - already leads naturally) | _இல்லையெனில் …_          |
-| clocked block | `pothu yetram(clk) { }`         | `yetram(clk) pothu { }`                                | _clk ஏற்றம் போது …_      |
+| Construct     | code-order                      | thamizh-order                                          | Reading               |
+| ------------- | ------------------------------- | ------------------------------------------------------ | --------------------- |
+| conditional   | `enil <cond> { }`               | `<cond> enil { }`                                      | _timer == 0 எனில் …_   |
+| alternative   | `illaiyenil { }`                | `illaiyenil { }` (unchanged - already leads naturally) | _இல்லையெனில் …_         |
+| clocked block | `pothu yetram(clk) { }`         | `yetram(clk) pothu { }`                                | _clk ஏற்றம் போது …_     |
 | match         | `thernthedu <expr> { }`         | `<expr> thernthedu { }`                                | _state-ஐத் தேர்ந்தெடு …_ |
-| if-expression | `enil c { a } illaiyenil { b }` | `c enil { a } illaiyenil { b }`                        |                          |
-| test          | `sodhanai "…" kaaga M() { }`    | `M() kaaga "…" sodhanai { }`                           | _M-க்காக "…" சோதனை_      |
+| if-expression | `enil c { a } illaiyenil { b }` | `c enil { a } illaiyenil { b }`                        |                       |
+| test          | `sodhanai "…" kaaga M() { }`    | `M() kaaga "…" sodhanai { }`                           | _M-க்காக "…" சோதனை_    |
 
 Unchanged in both profiles: `module/thoguthi`, port/wire/reg/mem declarations,
 `let` instantiation, `enum`, assignments (`=`, `<-`), all operators, all types.

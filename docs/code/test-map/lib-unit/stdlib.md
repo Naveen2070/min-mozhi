@@ -12,6 +12,6 @@ romanization picks the pure-Tamil twin.
 | -------------------------------------------------- | ------------------------------------------------------------------------------ |
 | `english_stem_selects_canonical`                   | `std.fifo` → the canonical module                                              |
 | `twin_name_and_roman_select_twin`                  | `nuulagam.varisai` and its romanization → the pure-Tamil twin                  |
-| `namespace_aliases_match_all_three_flavors`        | the `std`/`nuulagam`/`நூலகம்` namespace spellings all resolve                  |
+| `namespace_aliases_match_all_three_flavors`        | the `std`/`nuulagam`/`நூலகம்` namespace spellings all resolve                   |
 | `unknown_module_is_none_and_available_lists_stems` | an unknown module is `None` and the error can list what IS available           |
 | `every_embedded_module_has_no_imports`             | INVARIANT: no embedded module imports another, so resolution can never recurse |

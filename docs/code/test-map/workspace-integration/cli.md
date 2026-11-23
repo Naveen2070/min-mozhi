@@ -27,7 +27,7 @@ See `docs/code/13-tooling.md` for the full command reference.
 | `build_config_board_is_used_without_the_flag`                 | `[build] board` alone supplies the preset pins (no E1501)                                                    |
 | `build_flag_pcf_beats_config_pcf`                             | `[build] pcf` alone is used (E1502 on its bad name); `--pcf` wins over it                                    |
 | `build_rejects_a_zero_config_freq`                            | `[build] freq = 0` is exit 1 with `error:` and `= help:`                                                     |
-| `build_shows_the_source_name_of_an_unpinned_tamil_port`       | E1501 lists a Tamil port as `` `விளக்கு (villakku)` `` (source name, Verilog name in brackets)               |
+| `build_shows_the_source_name_of_an_unpinned_tamil_port`       | E1501 lists a Tamil port as `` `விளக்கு (villakku)` `` (source name, Verilog name in brackets)                |
 | `doctor_finds_the_config_toolchain`                           | `mimz doctor` honors `[build] toolchain` (relative to `mimz.toml`): the yosys line shows the fake suite path |
 | `ir_prints_the_optimized_line_form`                           | `mimz ir` prints the optimized IR in line form on stdout                                                     |
 | `ir_no_opt_keeps_what_the_optimizer_removes`                  | `--no-opt` prints the IR as lowered: cells the optimizer would remove are still there                        |

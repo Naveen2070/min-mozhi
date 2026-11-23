@@ -336,18 +336,15 @@ fn only_the_identical_bits_of_a_hold_mux_are_bypassed() {
 
     assert!(simplify_muxes(&mut module));
 
-    for i in 0..4 {
+    for (i, &net) in out.nets.iter().enumerate().take(4) {
         assert_eq!(
-            read_count(&module, out.nets[i]),
+            read_count(&module, net),
             0,
             "bit {i} is q's own bit on both sides"
         );
     }
-    for i in 4..8 {
-        assert!(
-            read_count(&module, out.nets[i]) > 0,
-            "bit {i} still selects v or q"
-        );
+    for (i, &net) in out.nets.iter().enumerate().take(8).skip(4) {
+        assert!(read_count(&module, net) > 0, "bit {i} still selects v or q");
     }
     eliminate_dead_cells(&mut module);
     assert!(

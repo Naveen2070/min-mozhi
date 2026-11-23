@@ -390,11 +390,11 @@ tale).
 
 All paths below are under `crates/mimz-core/src/`.
 
-| File / folder              | Does what                                                 |
-| -------------------------- | --------------------------------------------------------- |
-| `emit_verilog/mod.rs`      | `emit()` entry, the project table, output assembly        |
-| `emit_verilog/module/`     | one module → one Verilog module (ports, always blocks)    |
-| `emit_verilog/expr.rs`     | one expression tree → one Verilog expression string       |
+| File / folder              | Does what                                                |
+| -------------------------- | -------------------------------------------------------- |
+| `emit_verilog/mod.rs`      | `emit()` entry, the project table, output assembly       |
+| `emit_verilog/module/`     | one module → one Verilog module (ports, always blocks)   |
+| `emit_verilog/expr.rs`     | one expression tree → one Verilog expression string      |
 | `emit_verilog/translit.rs` | Tamil identifiers → readable ASCII (விளக்கு → `villakku`) |
 
 Two emitter tricks worth knowing even on day one: `repeat i: 0..4` is

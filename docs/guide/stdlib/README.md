@@ -19,13 +19,13 @@ module is:
 
 ## The modules
 
-| Module                      | What it is                | Built from                         | Pure-Tamil twin                 |
-| --------------------------- | ------------------------- | ---------------------------------- | ------------------------------- |
+| Module                      | What it is                | Built from                         | Pure-Tamil twin               |
+| --------------------------- | ------------------------- | ---------------------------------- | ----------------------------- |
 | [`Debouncer`](debouncer.md) | switch / button debouncer | 2-FF synchronizer + sample counter | `நிலைப்படுத்தி` (nilaippaduthi) |
 | [`Seg7`](seg7.md)           | BCD → 7-segment decoder   | combinational `match` table        | `எண்காட்டி` (ennkaatti)         |
-| [`Pwm`](pwm.md)             | pulse-width modulator     | free-running counter + compare     | `மினுக்கி` (minukki)            |
-| [`Fifo`](fifo.md)           | synchronous FIFO queue    | `mem` ring + head/tail/count       | `வரிசை` (varisai)               |
-| [`UartTx`](uart_tx.md)      | UART transmitter (8-N-1)  | enum FSM + baud divider + shifter  | `அனுப்பி` (anuppi)              |
+| [`Pwm`](pwm.md)             | pulse-width modulator     | free-running counter + compare     | `மினுக்கி` (minukki)           |
+| [`Fifo`](fifo.md)           | synchronous FIFO queue    | `mem` ring + head/tail/count       | `வரிசை` (varisai)             |
+| [`UartTx`](uart_tx.md)      | UART transmitter (8-N-1)  | enum FSM + baud divider + shifter  | `அனுப்பி` (anuppi)             |
 
 Each page documents the ports, parameters, how it works, a reproducible ASCII
 waveform from `mimz sim --trace`, and the tests.
@@ -36,13 +36,13 @@ Standard-library modules are built into the compiler - `import std.fifo` works
 from any project, no install path. The namespace and module are trilingual; the
 written alias picks the canonical English module or its pure-Tamil twin:
 
-| Module    | English                              | Tanglish                        | Tamil                            |
-| --------- | ------------------------------------ | ------------------------------- | -------------------------------- |
+| Module    | English                              | Tanglish                        | Tamil                         |
+| --------- | ------------------------------------ | ------------------------------- | ----------------------------- |
 | FIFO      | `import std.fifo` → `Fifo`           | `serkka nuulagam.varisai`       | `சேர்க்க நூலகம்.வரிசை` → `வரிசை` |
-| Debouncer | `import std.debouncer` → `Debouncer` | `serkka nuulagam.nilaippaduthi` | `சேர்க்க நூலகம்.நிலைப்படுத்தி`   |
-| PWM       | `import std.pwm` → `Pwm`             | `serkka nuulagam.minukki`       | `சேர்க்க நூலகம்.மினுக்கி`        |
-| 7-seg     | `import std.seg7` → `Seg7`           | `serkka nuulagam.ennkaatti`     | `சேர்க்க நூலகம்.எண்காட்டி`       |
-| UART TX   | `import std.uart_tx` → `UartTx`      | `serkka nuulagam.anuppi`        | `சேர்க்க நூலகம்.அனுப்பி`         |
+| Debouncer | `import std.debouncer` → `Debouncer` | `serkka nuulagam.nilaippaduthi` | `சேர்க்க நூலகம்.நிலைப்படுத்தி`     |
+| PWM       | `import std.pwm` → `Pwm`             | `serkka nuulagam.minukki`       | `சேர்க்க நூலகம்.மினுக்கி`         |
+| 7-seg     | `import std.seg7` → `Seg7`           | `serkka nuulagam.ennkaatti`     | `சேர்க்க நூலகம்.எண்காட்டி`         |
+| UART TX   | `import std.uart_tx` → `UartTx`      | `serkka nuulagam.anuppi`        | `சேர்க்க நூலகம்.அனுப்பி`          |
 
 > **Heads-up:** the alias is more than a name swap. Importing via a Tamil twin
 > (`வரிசை`, `நிலைப்படுத்தி`, …) selects the module whose **ports and

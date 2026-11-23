@@ -35,4 +35,4 @@ pin files, the OSS CAD Suite toolchain, and the Yosys/nextpnr/icepack flow
 | `the_same_pin_written_twice_is_not_a_conflict`                                 | `pins.rs`: a repeated identical `set_io` is accepted                                                                  |
 | `the_missing_tool_help_matches_where_the_tools_were_looked_for`                | `commands/build.rs`: E1504 help names the suite folder when a root is set, PATH otherwise                             |
 | `the_target_line_names_the_chip_even_without_a_board`                          | `commands/build.rs`: `target: up5k sg48 ...` printed with or without `--board` (default noted)                        |
-| `a_renamed_port_shows_both_spellings`                                          | `commands/build.rs`: E1501 labels `விளக்கு (villakku)`, `ப[1] (pa[1])`; an unrenamed port stays plain                 |
+| `a_renamed_port_shows_both_spellings`                                          | `commands/build.rs`: E1501 labels `விளக்கு (villakku)`, `ப[1] (pa[1])`; an unrenamed port stays plain                  |

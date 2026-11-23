@@ -173,7 +173,8 @@ pub(crate) fn compile(
 
     // Success: surface any non-fatal warnings (json → the array, else stderr).
     if json {
-        out.project(&warnings, &files);
+        // Warnings only here (errors returned above), so the exit code is SUCCESS.
+        let _ = out.project(&warnings, &files);
     } else {
         if !warnings.is_empty() {
             eprint!("{}", project::render_diags_lang(&warnings, &files, flavor));
